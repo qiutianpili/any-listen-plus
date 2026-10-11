@@ -1,0 +1,15 @@
+[Unit]
+Description=Any Listen instance for user %i
+After=network-online.target
+[Service]
+User=anylisten
+WorkingDirectory=/opt/any-listen
+Environment=NODE_ENV=production
+Environment=DATA_PATH=/opt/al-users/%i/data
+Environment=CONFIG_PATH=/opt/al-users/%i/data/config.cjs
+ExecStart=/usr/bin/node --max-old-space-size=200 index.cjs
+Restart=on-failure
+RestartSec=5
+MemoryMax=350M
+[Install]
+WantedBy=multi-user.target
