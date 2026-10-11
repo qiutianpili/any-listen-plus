@@ -1,0 +1,8 @@
+[
+  {
+    "name": "admin",
+    "role": "admin",
+    "port": 9500,
+    "alpw": "管理员实例 Any Listen 的登录密码"
+  }
+]
