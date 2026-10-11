@@ -1,3 +1,20 @@
+# Any Listen Plus
+
+> 这是 [any-listen/any-listen](https://github.com/any-listen/any-listen) 的个人增强分支，面向**多人共用的 Web 服务版**。
+
+在官方 v0.11.0 Web 版基础上增加：
+
+- Cloudflare Access 登录 + 每人独立实例，首次登录自助注册，按需启动、空闲休眠
+- 用户管理页：人数上限、删除、踢下线、向全体或指定用户推送通知（弹窗 / 右下角）
+- 每台设备独立播放队列、歌词同步校正、定时关闭（悬停弹出）、歌单内查找、倍速重置
+- 手机端完整适配，电脑端页面大小可调
+
+全部增强位于 [`plus/`](./plus/)，部署说明见 [plus/README.md](./plus/README.md)。
+
+---
+
+以下为上游原始 README。
+
 <p align="center"><a href="https://github.com/any-listen/any-listen"><img height="110" src="./docs/images/header-logo.svg" alt="any-listen logo"></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://github.com/any-listen/any-listen"><img height="86" src="./docs/images/header-name.svg" alt="any-listen name"></a></p>
 
 <p align="center">A cross-platform private music playback service</p>
