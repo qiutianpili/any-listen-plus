@@ -1,0 +1,39 @@
+# music.example.com -> gateway (127.0.0.1:9400). Put it behind Cloudflare Tunnel + Access.
+map $http_upgrade $al_conn { default upgrade; '' close; }
+server {
+    listen 443 ssl;
+    server_name music.example.com;
+    # ssl_certificate / ssl_certificate_key ...
+    allow 127.0.0.1; allow ::1; deny all;   # only reachable through cloudflared
+    client_max_body_size 200m;
+
+    # Plus front-end files (copy plus/web/* here)
+    location ^~ /__m/ {
+        alias /opt/any-listen-mobile/;
+        add_header Cache-Control "no-cache";
+    }
+    # the patched bundle must not be cached as immutable
+    location = /indexBzjGy48v.js {
+        proxy_pass http://127.0.0.1:9400;
+        proxy_set_header Host $host;
+        proxy_hide_header Cache-Control;
+        proxy_hide_header Expires;
+        add_header Cache-Control "no-cache";
+    }
+    location / {
+        proxy_set_header Accept-Encoding "";
+        sub_filter_once on;
+        # bump ?v= after every edit of mobile.js / mobile.css
+        sub_filter '</head>' '<link rel="stylesheet" href="/__m/mobile.css?v=1"><script src="/__m/mobile.js?v=1"></script></head>';
+        proxy_pass http://127.0.0.1:9400;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $al_conn;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_buffering off;
+    }
+}
