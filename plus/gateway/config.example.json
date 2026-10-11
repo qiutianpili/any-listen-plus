@@ -1,0 +1,5 @@
+{
+  "cfTeam": "https://your-team.cloudflareaccess.com",
+  "cfAud": "your-access-application-aud-tag",
+  "adminEmails": ["you@example.com"]
+}
