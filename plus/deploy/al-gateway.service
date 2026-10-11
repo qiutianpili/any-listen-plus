@@ -1,0 +1,11 @@
+[Unit]
+Description=Any Listen Plus gateway (Cloudflare Access -> per-user instances)
+After=network-online.target
+[Service]
+WorkingDirectory=/opt/al-gateway
+ExecStart=/usr/bin/node gw.js
+Restart=always
+RestartSec=3
+MemoryMax=80M
+[Install]
+WantedBy=multi-user.target
