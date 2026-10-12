@@ -7,6 +7,12 @@ server {
     allow 127.0.0.1; allow ::1; deny all;   # only reachable through cloudflared
     client_max_body_size 200m;
 
+    # one-time browser cache clear, called once per browser by mobile.js (bump CLR there to run again)
+    location = /__m/clear {
+        add_header Clear-Site-Data '"cache"' always;
+        add_header Cache-Control "no-store" always;
+        return 204;
+    }
     # Plus front-end files (copy plus/web/* here)
     location ^~ /__m/ {
         alias /opt/any-listen-mobile/;
