@@ -4,6 +4,7 @@
 # usage: daily.py            -> all users
 #        daily.py --user X --active -> one user who is online now (gateway calls this when there is no list for today yet)
 import json, os, random, re, sqlite3, sys, time, unicodedata, urllib.request, datetime
+from concurrent.futures import ThreadPoolExecutor
 
 DIR = '/opt/al-gateway'; OUT = DIR + '/daily'; SEEN = DIR + '/seen.json'
 UROOT = '/opt/al-users'; ADMIN_DATA = '/opt/any-listen/data'
@@ -108,19 +109,38 @@ def make(u, rnd):
     seeds = rnd.sample(hist[:20], min(6, len(hist[:20]))) + rnd.sample(hist[20:], min(2, len(hist[20:])))
     pool = [m for m in others if m['id'] not in {s['id'] for s in seeds}]
     seeds += rnd.sample(pool, min(12 - len(seeds), len(pool)))
-    seen_seed = set(); cand = {}; order = []
+    seen_seed = set(); uniq = []
     for i, s in enumerate(seeds):
         k = norm(s['name']) + '|' + norm(s['singer'])
         if k in seen_seed: continue
         seen_seed.add(k)
-        sid = s['meta'].get('songId') if s['meta'].get('source') == 'tx' else None
-        if not sid: sid = tx_songid(s['name'], s['singer'] or '')
-        if not sid: continue
-        d = qq('music.recommend.TrackRelationServer', 'GetSimilarSongs', {'songid': int(sid), 'num': 30})
-        time.sleep(0.6)
-        for v in (d or {}).get('vecSong') or []:
-            t = v.get('track') or {}
-            if not t.get('mid') or not playable(t) or len(t.get('singer') or []) > 5: continue
+        uniq.append((i, s))
+
+    def _fetch(arg):
+        # worker thread: network I/O only, no shared state touched
+        i, s = arg
+        try:
+            sid = s['meta'].get('songId') if s['meta'].get('source') == 'tx' else None
+            if not sid: sid = tx_songid(s['name'], s['singer'] or '')
+            if not sid: return (i, [])
+            d = qq('music.recommend.TrackRelationServer', 'GetSimilarSongs', {'songid': int(sid), 'num': 30})
+            time.sleep(0.6)
+            tracks = []
+            for v in (d or {}).get('vecSong') or []:
+                t = v.get('track') or {}
+                if not t.get('mid') or not playable(t) or len(t.get('singer') or []) > 5: continue
+                tracks.append(t)
+            return (i, tracks)
+        except Exception as e:
+            log('seed err', s.get('name'), e)
+            return (i, [])
+
+    # parallelize the QQ API calls (I/O bound); merge in seed order so scoring stays deterministic
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        results = list(ex.map(_fetch, uniq))
+    cand = {}; order = []
+    for i, tracks in sorted(results, key=lambda r: r[0]):
+        for t in tracks:
             it = item(t); key = norm(it['name']) + '|' + norm(it['singer'].split('、')[0])
             if it['id'] in owned_ids or key in owned_key: continue
             if it['id'] not in cand: cand[it['id']] = [0, it, key]; order.append(it['id'])
