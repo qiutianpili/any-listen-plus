@@ -10,8 +10,12 @@ let users = JSON.parse(fs.readFileSync(USERS, 'utf8'));
 const SETTINGS = DIR + '/settings.json';
 let settings = { idleMin: 15, maxUsers: 10 }; try { Object.assign(settings, JSON.parse(fs.readFileSync(SETTINGS, 'utf8'))); } catch (e) {}
 const saveSettings = () => fs.writeFileSync(SETTINGS, JSON.stringify(settings, null, 2), { mode: 0o600 });
-// admin push messages (2026-10-11): {id, ts, by, to:'*'|name, mode:'modal'|'toast', title, text}; kept 24h, max 50
+// admin push messages (2026-10-11): {id, ts, by, to:'*'|name, mode:'modal'|'toast'|'home', title, text}; kept 24h, max 50
 const PUSH_F = DIR + '/push.json', PUSH_TTL = 24 * 3600e3;
+// homepage announcement (2026-10-11): single notice, no history {title,text,ts,by}
+const NOTICE_F = DIR + '/notice.json';
+let notice = null; try { notice = JSON.parse(fs.readFileSync(NOTICE_F, 'utf8')); } catch (e) {}
+const saveNotice = () => { if (notice) fs.writeFileSync(NOTICE_F, JSON.stringify(notice), { mode: 0o600 }); else try { fs.unlinkSync(NOTICE_F); } catch (e) {} };
 let pushes = []; try { pushes = JSON.parse(fs.readFileSync(PUSH_F, 'utf8')); } catch (e) {}
 const savePush = () => { const t = Date.now() - PUSH_TTL; pushes = pushes.filter(p => p.ts > t).slice(-50); fs.writeFileSync(PUSH_F, JSON.stringify(pushes), { mode: 0o600 }); };
 const pushFor = (u, after) => { const t = Math.max(after || 0, Date.now() - PUSH_TTL); return pushes.filter(p => p.ts > t && (p.to === u.name || (p.to === '*' && p.by !== u.name))).map(p => ({ id: p.id, ts: p.ts, mode: p.mode, title: p.title, text: p.text })); };
@@ -33,6 +37,23 @@ const nameErr = (n0, self) => {
 };
 const regPage = (err = '', v = '') => page('设置用户名', `<h1>欢迎使用 Any Listen</h1>${err ? `<div class="err">${esc(err)}</div>` : ''}<form method="post" action="/__gw/register"><label>请输入您的用户名<input name="u" maxlength="16" value="${esc(v)}" autofocus required></label><button style="width:100%">进入</button></form><div class="tip">2–16 位中文、字母、数字、下划线或短横线。之后可以在侧栏用户名旁的小铅笔修改。</div><p class="gw-foot"><a href="/cdn-cgi/access/logout">换个邮箱</a></p>`);
 const touch = u => lastActive.set(u.name, Date.now());
+// last-online persistence (2026-10-12): daily.py skips users not seen for 7 days
+const SEEN_F = DIR + '/seen.json';
+let seenAt = {}; try { seenAt = JSON.parse(fs.readFileSync(SEEN_F, 'utf8')); } catch (e) {}
+setInterval(() => { let ch = false; for (const [k, v] of lastActive) if ((seenAt[k] || 0) < v) { seenAt[k] = v; ch = true; } if (ch) try { fs.writeFileSync(SEEN_F, JSON.stringify(seenAt), { mode: 0o600 }); } catch (e) {} }, 60000).unref();
+// 每日推荐 (2026-10-12): daily.py writes DIR/daily/<name>.json; serve today's, or generate it now for an online user who has none yet
+const DAILY_DIR = DIR + '/daily', dailyRun = new Map();
+const cnDate = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+function dailyFor(u) {
+  const today = cnDate(); let d = null;
+  try { d = JSON.parse(fs.readFileSync(path.join(DAILY_DIR, u.name + '.json'), 'utf8')); } catch (e) {}
+  if (d && d.date === today) return { date: d.date, list: d.list || [] };
+  if (dailyRun.get(u.name) !== today) {
+    dailyRun.set(u.name, today);
+    execFile('python3', [DIR + '/daily.py', '--user', u.name, '--active'], { timeout: 180000 }, (e, so, se) => { if (e) console.error('daily', u.name, e.message); if (se) console.log('daily', String(se).trim()); });
+  }
+  return { pending: true };
+}
 const portUp = port => new Promise(ok => { const s = net.connect(port, '127.0.0.1'); s.setTimeout(800); s.on('connect', () => { s.destroy(); ok(true); }); s.on('error', () => ok(false)); s.on('timeout', () => { s.destroy(); ok(false); }); });
 async function ensureStarted(u) {
   touch(u);
@@ -159,13 +180,18 @@ async function adminPage(req, res, me, msg = '', err = '') {
   const rows = users.map(u => `<tr><td data-l="用户">${esc(dn(u))}${dn(u) !== u.name ? `<div class="tip" style="margin:0">${esc(u.name)}</div>` : ''}</td><td data-l="身份" class="em">${u.role === 'admin' ? '管理员' : (u.email ? esc(u.email) : '用户（已停用）')}</td><td data-l="状态">${up[u.name] ? '运行中' : '休眠'}</td><td data-l="操作" class="ops">${u === me ? '' : `<form method="post" action="/__gw/admin/kick" style="display:inline" onsubmit="return confirm('把 ${esc(dn(u))} 踢下线？他需要重新登录才能继续使用')"><input type="hidden" name="u" value="${esc(u.name)}"><button class="del" style="background:#f0a020">踢下线</button></form>`}${u.role === 'admin' ? '' : ` <form method="post" action="/__gw/admin/del" style="display:inline" onsubmit="return confirm('删除用户 ${esc(dn(u))}？他的歌单和播放记录会一并删除，无法恢复')"><input type="hidden" name="u" value="${esc(u.name)}"><button class="del">删除</button></form>`}</td></tr>`).join('');
   send(res, 200, page('用户管理', `<h1>用户管理</h1>${msg ? `<div class="ok">${esc(msg)}</div>` : ''}${err ? `<div class="err">${esc(err)}</div>` : ''}<div class="tip" style="margin:0 0 12px">登录使用 Cloudflare Access（邮箱验证码、Google 或 GitHub）。管理员：${esc(ADMIN_EMAILS.join('、'))}；白名单里的其他邮箱首次登录时自己设置用户名。</div><table class="ut"><tr><th>用户</th><th>身份</th><th>状态</th><th>操作</th></tr>${rows}</table>
 <div class="tip" style="margin:-8px 0 14px">普通用户 ${nUsers} / ${settings.maxUsers} 人（不含管理员）</div>
+<h2 style="font-size:16px;color:#5b6ee1;margin:22px 0 8px">主页公告</h2>
+<form method="post" action="/__gw/admin/notice"><label>标题（可不填）<input name="title" maxlength="40" placeholder="公告" value="${esc(notice ? notice.title : '')}"></label>
+<label>内容<textarea name="text" maxlength="2000" rows="5" style="width:100%;box-sizing:border-box;padding:10px 12px;margin:6px 0 12px;border:1px solid #d8dbf0;border-radius:8px;font:inherit;font-size:15px;resize:vertical">${esc(notice ? notice.text : '')}</textarea></label><button style="width:100%">保存公告</button></form>
+${notice ? `<form method="post" action="/__gw/admin/notice" style="margin-top:8px" onsubmit="return confirm('清除主页公告？')"><input type="hidden" name="clear" value="1"><button class="del" style="width:100%">清除公告</button></form><div class="tip">上次更新：${new Date(notice.ts).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}</div>` : '<div class="tip">当前没有公告，主页不显示公告卡片。</div>'}
+<div class="tip">所有用户（包括你自己）在主页看到；保存新公告会直接替换旧的，不保留历史。</div>
 <h2 style="font-size:16px;color:#5b6ee1;margin:22px 0 8px">推送通知</h2>
 <form method="post" action="/__gw/admin/push"><label>发送给<select name="to"><option value="*">全体用户（不含自己）</option>${users.map(u => `<option value="${esc(u.name)}">${esc(dn(u))}${u === me ? '（自己，测试用）' : ''}</option>`).join('')}</select></label>
-<div style="display:flex;gap:18px;margin:2px 0 10px;font-size:15px"><label style="display:flex;align-items:center;gap:6px"><input type="radio" name="mode" value="modal" checked style="width:auto;margin:0">弹窗提示</label><label style="display:flex;align-items:center;gap:6px"><input type="radio" name="mode" value="toast" style="width:auto;margin:0">右下角提示</label></div>
+<div style="display:flex;gap:18px;margin:2px 0 10px;font-size:15px"><label style="display:flex;align-items:center;gap:6px"><input type="radio" name="mode" value="modal" checked style="width:auto;margin:0">弹窗提示</label><label style="display:flex;align-items:center;gap:6px"><input type="radio" name="mode" value="toast" style="width:auto;margin:0">右下角提示</label><label style="display:flex;align-items:center;gap:6px"><input type="radio" name="mode" value="home" style="width:auto;margin:0">主页推送</label></div>
 <label>标题（可不填）<input name="title" maxlength="40" placeholder="管理员通知"></label>
 <label>内容<textarea name="text" maxlength="500" required rows="4" style="width:100%;box-sizing:border-box;padding:10px 12px;margin:6px 0 12px;border:1px solid #d8dbf0;border-radius:8px;font:inherit;font-size:15px;resize:vertical"></textarea></label><button style="width:100%">发送</button></form>
-<div class="tip">在线用户约 20 秒内收到；不在线的用户 24 小时内打开 Any Listen 时收到。</div>
-${pushes.length ? `<table class="ut" style="margin-top:12px"><tr><th>最近推送</th><th>对象</th><th>方式</th><th>操作</th></tr>${pushes.slice().reverse().map(p => { const tu = users.find(x => x.name === p.to); return `<tr><td data-l="内容">${p.title ? `<b>${esc(p.title)}</b> ` : ''}${esc(p.text.length > 40 ? p.text.slice(0, 40) + '…' : p.text)}<div class="tip" style="margin:0">${new Date(p.ts).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}</div></td><td data-l="对象">${p.to === '*' ? '全体' : esc(tu ? dn(tu) : p.to)}</td><td data-l="方式">${p.mode === 'toast' ? '右下角' : '弹窗'}</td><td data-l="操作" class="ops"><form method="post" action="/__gw/admin/unpush" style="display:inline"><input type="hidden" name="id" value="${esc(p.id)}"><button class="del">撤回</button></form></td></tr>`; }).join('')}</table><div class="tip" style="margin:-8px 0 14px">撤回后还没收到的人不会再收到。</div>` : ''}
+<div class="tip">在线用户约 20 秒内收到；不在线的用户 24 小时内打开 Any Listen 时收到。主页推送显示在对方主页公告下方，保留 24 小时，对方可以点 × 关掉。</div>
+${pushes.length ? `<table class="ut" style="margin-top:12px"><tr><th>最近推送</th><th>对象</th><th>方式</th><th>操作</th></tr>${pushes.slice().reverse().map(p => { const tu = users.find(x => x.name === p.to); return `<tr><td data-l="内容">${p.title ? `<b>${esc(p.title)}</b> ` : ''}${esc(p.text.length > 40 ? p.text.slice(0, 40) + '…' : p.text)}<div class="tip" style="margin:0">${new Date(p.ts).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}</div></td><td data-l="对象">${p.to === '*' ? '全体' : esc(tu ? dn(tu) : p.to)}</td><td data-l="方式">${p.mode === 'toast' ? '右下角' : p.mode === 'home' ? '主页' : '弹窗'}</td><td data-l="操作" class="ops"><form method="post" action="/__gw/admin/unpush" style="display:inline"><input type="hidden" name="id" value="${esc(p.id)}"><button class="del">撤回</button></form></td></tr>`; }).join('')}</table><div class="tip" style="margin:-8px 0 14px">撤回后还没收到的人不会再收到。</div>` : ''}
 <form method="post" action="/__gw/admin/max" style="margin-top:18px"><label>普通用户上限（1–50）<input name="m" type="number" min="1" max="50" value="${settings.maxUsers}" required></label><button style="width:100%">保存用户上限</button></form>
 
 <form method="post" action="/__gw/admin/idle" style="margin-top:18px"><label>闲置多少分钟后自动停止播放器（1–1440）<input name="m" type="number" min="1" max="1440" value="${settings.idleMin}" required></label><button style="width:100%">保存闲置时间</button></form>
@@ -218,8 +244,23 @@ const server = http.createServer(async (req, res) => {
       me.display = n; saveUsers();
       return send(res, 200, JSON.stringify({ ok: true, name: n }), { 'Content-Type': 'application/json' });
     }
+    // per-user emoji covers for 主页 list cards (2026-10-11): me.covers {listId: emoji}; emoji only, never images
+    if (url.pathname === '/__gw/daily') return send(res, 200, JSON.stringify(dailyFor(me)), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    if (url.pathname === '/__gw/covers' && req.method === 'GET') return send(res, 200, JSON.stringify(me.covers || {}), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    if (url.pathname === '/__gw/covers' && req.method === 'POST' && req.headers['x-al'] === '1') {
+      const b = await readBody(req), id = String(b.get('id') || ''), e = String(b.get('e') || '').trim();
+      const J = (c, o) => send(res, c, JSON.stringify(o), { 'Content-Type': 'application/json' });
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || id === 'love') return J(400, { ok: false, err: '无效歌单' });
+      const cv = me.covers || {};
+      if (!e) { delete cv[id]; me.covers = cv; saveUsers(); return J(200, { ok: true }); }
+      const one = [...new Intl.Segmenter('zh', { granularity: 'grapheme' }).segment(e)].length === 1;
+      if (e.length > 32 || !one || !/^[\p{Extended_Pictographic}\p{Emoji_Component}\u200D\uFE0F\u20E3]+$/u.test(e) || !/\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u.test(e)) return J(400, { ok: false, err: '只能填一个 emoji' });
+      if (!(id in cv) && Object.keys(cv).length >= 300) return J(400, { ok: false, err: '数量太多' });
+      cv[id] = e; me.covers = cv; saveUsers(); return J(200, { ok: true, e });
+    }
     if (url.pathname === '/__gw/register') return send(res, 302, '', { Location: '/' });
     if (url.pathname === '/__gw/status') return send(res, 200, JSON.stringify({ running: await portUp(me.port) }), { 'Content-Type': 'application/json' });
+    if (url.pathname === '/__gw/notice') return send(res, 200, JSON.stringify(notice ? { title: notice.title, text: notice.text, ts: notice.ts } : null), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     if (url.pathname === '/__gw/push') return send(res, 200, JSON.stringify({ u: me.name, list: pushFor(me, +url.searchParams.get('a') || 0) }), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     if (url.pathname === '/__gw/me') return send(res, 200, JSON.stringify({ name: dn(me), role: me.role, k: me.alpw || '' }), { 'Content-Type': 'application/json' });
     if (url.pathname.startsWith('/__gw/admin')) {
@@ -259,13 +300,20 @@ const server = http.createServer(async (req, res) => {
           return adminPage(req, res, me, `已把 ${name} 踢下线${n ? `（断开 ${n} 个连接）` : ''}，他需要重新登录`);
         }
         if (url.pathname === '/__gw/admin/push') {
-          const to = String(b.get('to') || '*'), mode = b.get('mode') === 'toast' ? 'toast' : 'modal';
+          const to = String(b.get('to') || '*'), mode = ['toast', 'home'].includes(b.get('mode')) ? b.get('mode') : 'modal';
           const title = String(b.get('title') || '').trim().slice(0, 40), text = String(b.get('text') || '').replace(/\r\n?/g, '\n').trim().slice(0, 500);
           if (!text) return adminPage(req, res, me, '', '请填写推送内容');
           if (to !== '*' && !users.some(x => x.name === to)) return adminPage(req, res, me, '', '找不到这个用户');
           pushes.push({ id: crypto.randomBytes(6).toString('hex'), ts: Date.now(), by: me.name, to, mode, title, text }); savePush();
           const tu = users.find(x => x.name === to);
-          return adminPage(req, res, me, `已推送给${to === '*' ? '全体用户' : ' ' + dn(tu)}（${mode === 'toast' ? '右下角提示' : '弹窗提示'}）`);
+          return adminPage(req, res, me, `已推送给${to === '*' ? '全体用户' : ' ' + dn(tu)}（${mode === 'toast' ? '右下角提示' : mode === 'home' ? '主页推送' : '弹窗提示'}）`);
+        }
+        if (url.pathname === '/__gw/admin/notice') {
+          if (b.get('clear')) { notice = null; saveNotice(); return adminPage(req, res, me, '公告已清除'); }
+          const title = String(b.get('title') || '').trim().slice(0, 40), text = String(b.get('text') || '').replace(/\r\n?/g, '\n').trim().slice(0, 2000);
+          if (!text) return adminPage(req, res, me, '', '请填写公告内容（要删除公告请点“清除公告”）');
+          notice = { title, text, ts: Date.now(), by: me.name }; saveNotice();
+          return adminPage(req, res, me, '公告已保存，用户主页会显示新公告');
         }
         if (url.pathname === '/__gw/admin/unpush') {
           const id = String(b.get('id') || ''), n = pushes.length; pushes = pushes.filter(p => p.id !== id); savePush();
