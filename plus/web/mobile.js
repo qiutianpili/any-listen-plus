@@ -13,6 +13,10 @@
       for(var c=0;c<b.numberOfChannels;c++){var src=b.getChannelData(c).subarray(0,max),dst=n.getChannelData(c);dst.set(src);for(var i=0;i<f;i++)dst[max-f+i]*=1-i/f}b=n}}catch(e){}
     d.set.call(this,b)}});
 })();
+/* one-time browser cache clear (2026-10-12): bump CLR to clear this site's HTTP cache once per browser (nginx /__m/clear sends Clear-Site-Data: "cache") */
+(function(){var CLR='1';try{if(localStorage.getItem('al-clr')===CLR)return;localStorage.setItem('al-clr',CLR);sessionStorage.removeItem('al-direct-bad');
+  if(window.caches&&caches.keys)caches.keys().then(function(k){k.forEach(function(n){caches.delete(n)})}).catch(function(){});
+  setTimeout(function(){fetch('/__m/clear',{cache:'no-store',credentials:'same-origin'}).catch(function(){})},8000)}catch(e){}})();
 /* shared, frame-throttled DOM observer (perf 2026-10-09) */
 (function(){
   var fns=[],queued=false;
@@ -580,12 +584,184 @@
       busy=false;if(!j||!j.list)return;
       if(user!==j.u){user=j.u;}
       var s=seen(),max=s;
-      j.list.forEach(function(m){if(m.ts<=s)return;if(m.ts>max)max=m.ts;if(m.mode==='toast')toast(m);else queue.push(m)});
-      mark(max);nextModal();
+      var hp=false;j.list.forEach(function(m){if(m.ts<=s)return;if(m.ts>max)max=m.ts;if(m.mode==='home')hp=true;else if(m.mode==='toast')toast(m);else queue.push(m)});
+      mark(max);nextModal();if(hp&&window.__alHome&&window.__alHome.pushes)window.__alHome.pushes();
     }).catch(function(){busy=false});
   }
   setTimeout(poll,3000);
   setInterval(function(){if(!document.hidden)poll()},20000);
   document.addEventListener('visibilitychange',function(){if(!document.hidden)poll()});
   window.__alPush={poll:poll};
+})();
+/* 主页 (2026-10-11): sidebar entry + landing view with cards: admin notice (/__gw/notice) and the user's lists (我喜欢 + created/collected lists).
+   Overlay inside #app-right's view area, so the native router/state is untouched; any navigation closes it. */
+(function(){
+  if(/^\/__gw\//.test(location.pathname))return;
+  var HOME='M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z',on=false,opened=false,gen=0,drawnN=-1;
+  function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
+  function view(){var r=document.getElementById('app-right');if(!r)return null;var tb=r.querySelector('.toolbar');var v=tb&&tb.nextElementSibling;return v||null}
+  function nav(){
+    var a=document.querySelector('#app-main .aside');if(!a)return;var ul=a.querySelector('.aside-nav');if(!ul||document.getElementById('m-home-nav'))return;
+    var h=[].filter.call(ul.classList,function(c){return c.indexOf('svelte-')===0})[0]||'';
+    var li=document.createElement('li');li.className='nav-item '+h;li.setAttribute('role','presentation');
+    li.innerHTML='<a id="m-home-nav" role="tab" data-ignore-tip="" class="link '+h+'" href="#" aria-label="主页"><div class="left '+h+'"><div class="icon '+h+'"><svg class="'+h+'" viewBox="0 0 24 24" fill="currentColor"><path d="'+HOME+'"/></svg></div> <span class="nav-name '+h+'">主页</span></div></a>';
+    ul.insertBefore(li,ul.firstChild);
+    li.firstChild.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();document.documentElement.classList.remove('m-aside-open');show()});
+    if(on)li.firstChild.classList.add('m-active');
+  }
+  function hide(){if(!on)return;on=false;closeEd();gen++;var b=document.getElementById('m-home');if(b)b.remove();document.documentElement.classList.remove('m-home-on');var n=document.getElementById('m-home-nav');if(n)n.classList.remove('m-active')}
+  function fmtTime(ts){try{return new Date(ts).toLocaleString('zh-CN',{hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}catch(e){return ''}}
+  function noticeCard(box,n){
+    var c=el('div','m-home-card m-home-notice');var hd=el('div','m-home-nh');
+    hd.appendChild(el('span','m-home-tag','公告'));hd.appendChild(el('span','m-home-nt',n.title||'管理员公告'));c.appendChild(hd);
+    c.appendChild(el('div','m-home-nb',n.text));c.appendChild(el('div','m-home-ts','更新于 '+fmtTime(n.ts)));box.appendChild(c);
+  }
+  /* 主页推送 (2026-10-12): admin pushes with mode home show as cards under the notice until dismissed (per user, localStorage) or the 24h TTL */
+  var pbox=null,puser='';
+  function dis(){try{return JSON.parse(localStorage.getItem('al-homepush:'+puser)||'[]')}catch(e){return []}}
+  function pushCards(){
+    var box=pbox,g=gen;if(!box||!on)return;
+    fetch('/__gw/push?a=0',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){
+      if(g!==gen||!j||!j.list)return;puser=j.u||'';var d=dis();box.textContent='';
+      j.list.filter(function(p){return p.mode==='home'&&d.indexOf(p.id)<0}).sort(function(a,b){return b.ts-a.ts}).forEach(function(p){
+        var c=el('div','m-home-card m-home-notice m-home-push');var hd=el('div','m-home-nh');
+        hd.appendChild(el('span','m-home-tag','推送'));hd.appendChild(el('span','m-home-nt',p.title||'管理员通知'));
+        var x=el('button','m-home-px','×');x.type='button';x.title='关闭';x.setAttribute('aria-label','关闭');hd.appendChild(x);c.appendChild(hd);
+        c.appendChild(el('div','m-home-nb',p.text));c.appendChild(el('div','m-home-ts','推送于 '+fmtTime(p.ts)));
+        x.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var d=dis();if(d.indexOf(p.id)<0)d.push(p.id);try{localStorage.setItem('al-homepush:'+puser,JSON.stringify(d.slice(-100)))}catch(er){}c.remove()});
+        box.appendChild(c);
+      });
+    }).catch(function(){});
+  }
+  var covers={},HEART='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z';
+  /* 每日推荐 cover (2026-10-12): fixed vector sun, not editable */
+  function isDaily(l){return l&&l.name==='每日推荐'&&l.type==='general'}
+  var SUN='<svg class="m-home-heart m-home-sun" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="4.6"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1.8v2.6M12 19.6v2.6M1.8 12h2.6M19.6 12h2.6M4.8 4.8l1.85 1.85M17.35 17.35l1.85 1.85M4.8 19.2l1.85-1.85M17.35 6.65l1.85-1.85"/></g></svg>';
+  function isEmo(e){try{return e.length<=32&&[...new Intl.Segmenter('zh',{granularity:'grapheme'}).segment(e)].length===1&&/^[\p{Extended_Pictographic}\p{Emoji_Component}\u200D\uFE0F\u20E3]+$/u.test(e)&&/\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u.test(e)}catch(x){return false}}
+  function paint(cv,l,love){
+    cv.textContent='';
+    if(love){cv.innerHTML='<svg class="m-home-heart" viewBox="0 0 24 24" fill="currentColor"><path d="'+HEART+'"/></svg>';return}
+    if(isDaily(l)){cv.innerHTML=SUN;return}
+    var e=covers[l.id];
+    if(e)cv.appendChild(el('span','m-home-emo',e));
+    else cv.appendChild(el('span','m-home-ph',Array.from(l.name||'?')[0]));
+  }
+  function closeEd(){var p=document.getElementById('m-home-ed');if(p)p.remove()}
+  function editCover(btn,cv,l){
+    closeEd();
+    var p=el('div');p.id='m-home-ed';
+    p.appendChild(el('div','t','设置封面 emoji'));
+    var inp=el('input');inp.type='text';inp.maxLength=32;inp.placeholder='输入或粘贴一个 emoji';inp.value=covers[l.id]||'';p.appendChild(inp);
+    var row=el('div','picks');'🎵 🎧 🎸 🎹 🎤 💿 🌙 ☀️ 🔥 🌸 🍀 ⭐ 💖 🌊 ☕ 🎮 🚗 🐱'.split(' ').forEach(function(x){var k=el('button','pk',x);k.type='button';k.addEventListener('click',function(){inp.value=x;inp.focus()});row.appendChild(k)});p.appendChild(row);
+    var err=el('div','err');p.appendChild(err);
+    var bar=el('div','bar'),rs=el('button','rs','恢复默认'),cc=el('button','cc','取消'),ok=el('button','ok','保存');[rs,cc,ok].forEach(function(x){x.type='button';bar.appendChild(x)});p.appendChild(bar);
+    function save(v){
+      if(v&&!isEmo(v)){err.textContent='只能填一个 emoji';return}
+      err.textContent='';ok.disabled=rs.disabled=true;
+      fetch('/__gw/covers',{method:'POST',credentials:'same-origin',headers:{'x-al':'1','Content-Type':'application/x-www-form-urlencoded'},body:'id='+encodeURIComponent(l.id)+'&e='+encodeURIComponent(v)})
+        .then(function(r){return r.json()}).then(function(j){ok.disabled=rs.disabled=false;if(!j.ok){err.textContent=j.err||'保存失败';return}if(v)covers[l.id]=v;else delete covers[l.id];paint(cv,l,false);closeEd()})
+        .catch(function(){ok.disabled=rs.disabled=false;err.textContent='保存失败，请重试'});
+    }
+    ok.addEventListener('click',function(){save(inp.value.trim())});rs.addEventListener('click',function(){save('')});cc.addEventListener('click',closeEd);
+    inp.addEventListener('keydown',function(e){e.stopPropagation();if(e.key==='Enter')save(inp.value.trim());if(e.key==='Escape')closeEd()});
+    ['mousedown','pointerdown','click','touchstart','wheel','keyup'].forEach(function(t){p.addEventListener(t,function(e){e.stopPropagation()})});
+    document.body.appendChild(p);
+    var r=btn.getBoundingClientRect(),w=p.offsetWidth,h=p.offsetHeight;
+    var x=Math.min(Math.max(8,r.right-w),innerWidth-w-8),y=r.bottom+6;if(y+h>innerHeight-8)y=Math.max(8,r.top-h-6);
+    p.style.left=x+'px';p.style.top=y+'px';setTimeout(function(){inp.focus();inp.select()},30);
+  }
+  document.addEventListener('mousedown',function(e){var p=document.getElementById('m-home-ed');if(p&&!p.contains(e.target))closeEd()});
+  function listCard(grid,l,my){
+    var love=l.id===my,c=el('a','m-home-card m-home-list');c.href='#/library?id='+encodeURIComponent(l.id);
+    var cv=el('div','m-home-cover'+(love?' love':'')+(isDaily(l)?' sun':''));paint(cv,l,love);
+    var wrapC=el('div','m-home-cw');wrapC.appendChild(cv);
+    if(!love&&!isDaily(l)){var eb=el('button','m-home-eb');eb.type='button';eb.title='修改封面';eb.setAttribute('aria-label','修改封面');
+      eb.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+      eb.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();editCover(eb,cv,l)});wrapC.appendChild(eb)}
+    c.appendChild(wrapC);
+    c.appendChild(el('div','m-home-ln',l.name));var meta=el('div','m-home-lm',l.type==='remote'?'收藏的在线歌单':(love?'我喜欢的歌曲':(l.name==='每日推荐'&&l.type==='general'?'每天自动更新':'自建歌单')));c.appendChild(meta);
+    c.addEventListener('click',function(){closeEd();hide();setTimeout(function(){fromHome=location.hash},400)});
+    grid.appendChild(c);
+    var g=gen;try{Promise.resolve(window.__alLib.musics(l.id)).then(function(ms){if(g!==gen||!ms)return;meta.textContent=ms.length+' 首 · '+meta.textContent}).catch(function(){})}catch(e){}
+  }
+  function show(){
+    var v=view();if(!v){setTimeout(show,300);return}
+    hide();on=true;opened=true;drawnN=-1;var g=++gen;document.documentElement.classList.add('m-home-on');
+    var n=document.getElementById('m-home-nav');if(n)n.classList.add('m-active');
+    var b=el('div');b.id='m-home';var wrap=el('div','m-home-wrap');b.appendChild(wrap);
+    wrap.appendChild(el('h2','m-home-h','主页'));
+    var nb=el('div','m-home-nbox');wrap.appendChild(nb);
+    pbox=el('div','m-home-nbox m-home-pbox');wrap.appendChild(pbox);
+    wrap.appendChild(el('h3','m-home-sh','我的歌单'));var grid=el('div','m-home-grid');wrap.appendChild(grid);
+    if(getComputedStyle(v).position==='static')v.style.position='relative';
+    v.appendChild(b);
+    fetch('/__gw/notice',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(g===gen&&j&&j.text)noticeCard(nb,j)}).catch(function(){});
+    pushCards();
+    (function fill(t){
+      if(g!==gen)return;
+      if(!window.__alLib){if(t<40)setTimeout(function(){fill(t+1)},250);else grid.appendChild(el('div','m-home-empty','歌单加载失败，请刷新页面'));return}
+      var ls=[];try{ls=window.__alLib.lists()}catch(e){}
+      var love=ls.filter(function(l){return l.name==='我喜欢'})[0];
+      var mine=ls.filter(function(l){return l.type});
+      if(!love&&!mine.length&&t<40){setTimeout(function(){fill(t+1)},250);return}
+      var draw=function(){if(g!==gen)return;grid.textContent='';
+      if(love)listCard(grid,love,love.id);
+      drawnN=mine.length;mine.forEach(function(l){listCard(grid,l,love&&love.id)});
+      if(!mine.length)grid.appendChild(el('div','m-home-empty','还没有自建或收藏的歌单，可以在左侧“我的列表”里新建，或在在线歌单里点收藏。'));
+      };
+      fetch('/__gw/covers',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():{}}).then(function(j){covers=j&&typeof j==='object'?j:{};draw()}).catch(function(){draw()});
+    })(0);
+  }
+  /* the app redirects to its last list right after boot: ignore route changes the user did not cause during the first seconds */
+  var autoAt=0,act=0;['pointerdown','keydown','touchstart'].forEach(function(t){document.addEventListener(t,function(){act=Date.now()},true)});
+  window.addEventListener('hashchange',function(){if(Date.now()-autoAt<6000&&Date.now()-act>1500)return;hide()});
+  document.addEventListener('click',function(e){if(!on)return;var a=e.target.closest&&e.target.closest('#app-main .aside a, #app-main .aside .my-list-container .container');if(a&&a.id!=='m-home-nav')hide()},true);
+  window.__alObs(function(){nav();if(on&&!document.getElementById('m-home'))show();
+    /* user lists can load after 主页 rendered (or a list was added/removed): redraw when the count changes */
+    if(on&&drawnN>=0&&window.__alLib&&window.__alLib.ul&&window.__alLib.ul().filter(function(l){return l.type}).length!==drawnN&&!document.getElementById('m-home-ed'))show();
+    if(!opened&&document.querySelector('#app-main .aside .aside-nav')&&view()&&window.__alLib){autoAt=Date.now();show()}});
+  /* toolbar 返回 after opening a list from 主页 goes back to 主页 (native back only knows online-search history) */
+  var fromHome=null;
+  window.addEventListener('hashchange',function(){if(fromHome&&location.hash!==fromHome)fromHome=null});
+  document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('#app-right .toolbar [aria-label="返回"]');
+    if(!b||on||!fromHome||location.hash!==fromHome)return;e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();fromHome=null;show()},true);
+  window.__alHome={show:show,hide:hide,pushes:pushCards};
+})();
+/* 每日推荐 (2026-10-12): the gateway builds 30 songs a day (/__gw/daily, QQ similar songs from history + lists);
+   keep a native list named 每日推荐 (first in 我的列表) overwritten with today's songs via the bundle's list actions (__alLib.act). */
+(function(){
+  if(/^\/__gw\//.test(location.pathname))return;
+  var NAME='每日推荐',busy=false,tries=0,doneDate='',stable=null;
+  function rid(){var s='',c='abcdefghijklmnopqrstuvwxyz0123456789';for(var i=0;i<11;i++)s+=c[Math.floor(Math.random()*36)];return s}
+  function ready(){
+    var L=window.__alLib;if(!L||!L.act||!L.ul)return false;
+    /* user lists load asynchronously: wait until the list count is unchanged for two checks so an empty early read never creates a duplicate */
+    var n=L.ul().length;if(stable&&stable.n===n&&Date.now()-stable.t>=3000)return true;
+    if(!stable||stable.n!==n)stable={n:n,t:Date.now()};return false;
+  }
+  function find(){return window.__alLib.ul().filter(function(l){return l.name===NAME&&l.type==='general'})[0]}
+  function sync(){
+    if(busy)return;if(!ready()){setTimeout(sync,1500);return}
+    busy=true;
+    fetch('/__gw/daily',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){
+      if(!j){busy=false;return}
+      if(j.pending){busy=false;if(++tries<=6)setTimeout(sync,40000);return}
+      if(j.date===doneDate||!j.list||!j.list.length){busy=false;return}
+      var L=window.__alLib,now=Date.now(),l=find(),created=false,p;
+      if(l)p=Promise.resolve(l.id);
+      else{var id=rid();created=true;p=L.act({action:'list_create',data:{position:0,listInfos:[{id:id,type:'general',name:NAME,parentId:null,meta:{createTime:now,desc:'',playCount:0,songCount:0,pic:'',posTime:now,updateTime:now}}]}}).then(function(){return id})}
+      return p.then(function(id){
+        return Promise.resolve(created?[]:L.musics(id)).then(function(ms){
+          ms=ms||[];
+          var same=ms.length===j.list.length&&ms.every(function(m,i){return m.id===j.list[i].id});
+          if(same)return false;
+          var infos=j.list.map(function(m,i){var x=JSON.parse(JSON.stringify(m));x.meta=x.meta||{};x.meta.createTime=now+i;x.meta.updateTime=now;return x});
+          return L.act({action:'list_music_overwrite',data:{listId:id,musicInfos:infos}}).then(function(){return true});
+        });
+      }).then(function(ch){busy=false;doneDate=j.date;if((ch||created)&&document.getElementById('m-home')&&window.__alHome)setTimeout(window.__alHome.show,600)});
+    }).catch(function(e){busy=false;console.warn('daily',e)});
+  }
+  setTimeout(sync,4000);
+  setInterval(function(){if(!document.hidden){tries=0;sync()}},30*60e3);
+  window.__alDaily={sync:sync};
 })();
