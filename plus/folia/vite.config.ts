@@ -84,6 +84,7 @@ export default defineConfig({
     cssCodeSplit: false,
     modulePreload: { polyfill: false },
     sourcemap: !!process.env.SM,
+    ...(process.env.NOMIN ? { minify: false } : {}),
     chunkSizeWarningLimit: 4000,
     rollupOptions: {
       input: { 'folia-player': path.resolve(__dirname, 'src/main.tsx') },
