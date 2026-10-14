@@ -18,6 +18,15 @@ server {
         alias /opt/any-listen-mobile/;
         add_header Cache-Control "no-cache";
     }
+    # 账号音源登录页（plus/account-sources），al-accsrc 只监听 127.0.0.1
+    location ^~ /al-login {
+        proxy_pass http://127.0.0.1:9410;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+        add_header Cache-Control "no-store" always;
+    }
     # the patched bundle must not be cached as immutable
     location = /indexBzjGy48v.js {
         proxy_pass http://127.0.0.1:9400;
