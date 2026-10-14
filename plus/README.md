@@ -13,6 +13,7 @@
 | `gateway/*.example.json` | 网关配置与用户列表示例 |
 | `patches/v0.11.0.json`、`patches/apply.js` | 对官方 v0.11.0 构建产物及音源加载扩展 lx-api-source-loader 0.1.7 的补丁（带 sha256 校验） |
 | `deploy/` | systemd 服务与 nginx 配置示例 |
+| `folia/` | Folia 详情页（Folia Major 歌词可视化移植）源码与构建脚本，见 [folia/README.md](./folia/README.md) |
 
 ## 功能
 
@@ -43,6 +44,12 @@
 - 详情页自下而上弹出，背景改为主题色渐变；进度条悬停显示时间。
 - **主页**：侧栏第一项，显示公告、推送和歌单卡片；「我喜欢」为爱心图标、「每日推荐」为太阳图标，其他歌单可设一个 emoji 作为封面（不使用歌曲封面或自定义图片）；从主页打开的歌单点「返回」回到主页。
 
+### Folia 详情页
+- 歌曲详情页可切换为 [Folia Major](https://github.com/chthollyphile/folia-major)（chthollyphile，AGPL-3.0）的歌词可视化：14 种歌词视觉模式、多种背景、各模式设置面板、静态模式。
+- **Folia / 原版** 随时切换，不影响播放；选择保存在 localStorage `al-detail-style`，未设置时手机默认原版、电脑默认 Folia。
+- 按需加载：只有以 Folia 打开详情页才下载，GPU 模式（three.js / pixi）和 WebGL 背景再单独按需加载；关闭即卸载。缺少 bundle 钩子或加载失败时自动回退原版。
+- 构建与说明见 [folia/README.md](./folia/README.md)。
+
 ## 部署（Debian / Ubuntu 示例）
 
 1. 按上游文档部署 Any Listen v0.11.0 到 `/opt/any-listen`，用 `anylisten` 用户运行，确认能正常打开。
@@ -53,6 +60,11 @@
    ```
    版本不符的文件会被跳过，原文件备份为 `*.orig`。
 3. 前端脚本：把 `plus/web/*` 复制到 `/opt/any-listen-mobile/`，参考 `deploy/nginx.conf.example` 配置 nginx。每次改动脚本后把 `?v=` 加 1。
+   Folia 详情页：`cd plus/folia && bash build.sh`，再把 `dist/` 复制为 `/opt/any-listen-mobile/folia/`（即 `/__m/folia/`）：
+   ```bash
+   rm -rf /opt/any-listen-mobile/folia && cp -r plus/folia/dist /opt/any-listen-mobile/folia
+   ```
+   不部署这一步也可以，详情页会自动使用原版。
 4. 网关：
    ```bash
    mkdir -p /opt/al-gateway /opt/al-users
@@ -70,5 +82,8 @@
 > 注意：不要让 CDN 缓存音频；补丁过的 `indexBzjGy48v.js` 需以 `no-cache` 提供，修改后记得清除 CDN 缓存。
 
 ## 许可
+
+Folia 详情页包含 [Folia Major](https://github.com/chthollyphile/folia-major)（chthollyphile 及贡献者，AGPL-3.0）的代码，见 [folia/README.md](./folia/README.md)。
+
 
 与上游相同：AGPL-3.0 并附加「未经原作者书面许可禁止商用」条款，详见根目录 [LICENSE](../LICENSE)。感谢 Any Listen 作者。
