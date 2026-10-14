@@ -2,14 +2,24 @@
 Description=Any Listen instance for user %i
 After=network-online.target
 [Service]
-User=anylisten
+# each player has its own system user al-<id> (2026-10-14); data dir 0700
+User=al-%i
+Group=al-%i
+UMask=0077
 WorkingDirectory=/opt/any-listen
 Environment=NODE_ENV=production
 Environment=DATA_PATH=/opt/al-users/%i/data
 Environment=CONFIG_PATH=/opt/al-users/%i/data/config.cjs
+# root ('+'): write this user's own, current account-source script before every start (strips a cloned admin copy,
+# applies pending token rotation). '-': never block playback if it fails.
+ExecStartPre=+-/usr/bin/python3 /opt/al-accsrc/bin/install.py install %i --force
 ExecStart=/usr/bin/node --max-old-space-size=200 index.cjs
 Restart=on-failure
 RestartSec=5
 MemoryMax=350M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
 [Install]
 WantedBy=multi-user.target
