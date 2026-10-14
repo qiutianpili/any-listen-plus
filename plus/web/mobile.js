@@ -773,7 +773,7 @@
    if they or the bundle are missing it falls back to the original page with a console warning. Switching never touches playback. */
 (function(){
   if(/^\/__gw\//.test(location.pathname))return;
-  var FV='1',K='al-detail-style',SRC='/__m/folia/folia-player.js?v='+FV;
+  var FV='2',K='al-detail-style',SRC='/__m/folia/folia-player.js?v='+FV;
   var mqP=window.matchMedia('(max-width: 820px), (pointer: coarse) and (max-width: 1024px)');
   var mod=null,loading=null,handle=null,host=null,failed=false,warned=false,pdSeen=null,closing=0;
   function style(){var d=mqP.matches?'al':'folia';try{var v=localStorage.getItem(K);return v==='al'||v==='folia'?v:d}catch(e){return d}}
