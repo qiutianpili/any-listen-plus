@@ -1,7 +1,10 @@
 {
  "indexBzjGy48v.js": {
   "sha256_original": "d8fa16e472c42b2c69f0014e434561e8328aae6f8034525cff263d82b735d0d2",
-  "sha256_patched": "fcf7807c62732e3c5dfd83b9cb49a024e5229d6f59d5678740b0c49d320e48d9",
+  "sha256_patched": "ac8c04b40d1cf447c5c5ce7ac5e7c2d6634d990675411f103868dd440e843ab8",
+  "sha256_previous": [
+   "fcf7807c62732e3c5dfd83b9cb49a024e5229d6f59d5678740b0c49d320e48d9"
+  ],
   "hunks": [
    {
     "find": "ipboardWriteText(e)},Fn=async()=>q.getLoginDevices(),In=async e=>q.removeLoginDevice(e),Ln=async e=>q.openUrl(e),Rn=async()=>q.getCurrentVersionInfo(),zn=async()=>q.checkUpdate(),Bn=async()=>q.downloadUpdate(),Vn=async()=>q.restartUpdate(),Hn=async()=>q.getCacheSize(),Un=async()=>q.clearCache(),Wn=async(e,t)=>q.exportData(e,t),Gn=async(e,t,n)=>q.importData(e,t,n),Kn=async e=>q.getAppLogs(e),qn=async e=>q.clearAppLog(e),Jn=e=>{let t=Math.trunc((Da",
@@ -29,7 +32,7 @@
    },
    {
     "find": "(),o(),s(),c(),u()}},Bw=()=>Lu()*1e3,Vw=()=>{Fw(Bw())},Hw=()=>{Iw()},Uw=()=>{Lw()},",
-    "replace": "(),o(),s(),c(),u()}},Bw=()=>Lu()*1e3-(window.__alLat?.()||0),Vw=()=>{Fw(Bw())},__alPlX=(window.__alPl={seek:e=>Fb.exec(`player.seekTo`,e),pause:()=>{X.pause(),xc(!1)},stopAfter:e=>Nc(!!e),stopFlag:()=>Z.isPlayedStop,playing:()=>!!Z.playing,progress:()=>Z.progress,id:()=>Z.musicInfo&&Z.musicInfo.id,audio:()=>{try{return Q}catch(e){return null}}}),__alLrcX=(window.__alLrc={sync:()=>Vw(),cur:()=>Tw?.linePlayer?._rawCurrentTime?.(),playing:()=>!!(Z.playing&&Tw?.linePlayer?.isPlay),t:()=>Bw()}),Hw=()=>{Iw()},Uw=()=>{Lw()},"
+    "replace": "(),o(),s(),c(),u()}},Bw=()=>Lu()*1e3-(window.__alLat?.()||0),Vw=()=>{Fw(Bw())},__alPlX=(window.__alPl={seek:e=>Fb.exec(`player.seekTo`,e),info:()=>Z.musicInfo,vol:()=>Z.volume,mute:()=>Z.volumeMute,rate:()=>Z.playbackRate,exec:(c,...a)=>Fb.exec(c,...a),detail:e=>fb(!!e),shown:()=>!!db.isShowPlayDetail,pause:()=>{X.pause(),xc(!1)},stopAfter:e=>Nc(!!e),stopFlag:()=>Z.isPlayedStop,playing:()=>!!Z.playing,progress:()=>Z.progress,id:()=>Z.musicInfo&&Z.musicInfo.id,audio:()=>{try{return Q}catch(e){return null}}}),__alLrcX=(window.__alLrc={sync:()=>Vw(),off:()=>Tw?.linePlayer?._getOffsetTime?.()||0,cur:()=>Tw?.linePlayer?._rawCurrentTime?.(),playing:()=>!!(Z.playing&&Tw?.linePlayer?.isPlay),t:()=>Bw()}),Hw=()=>{Iw()},Uw=()=>{Lw()},"
    }
   ]
  },
