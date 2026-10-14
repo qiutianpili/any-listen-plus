@@ -62,7 +62,8 @@ async function startQr(p){
  stop(p);const c=document.getElementById('p-'+p),q=c.querySelector('.qr');q.hidden=false;q.innerHTML='<div class="tip">正在生成二维码…</div>';
  c.querySelector('.btns').innerHTML='<button class="ghost" id="cancel-'+p+'">取消</button>';document.getElementById('cancel-'+p).onclick=()=>{stop(p);q.hidden=true;render()};
  let r;try{r=await req(p+'/qr',{})}catch(e){q.hidden=true;err(p,'生成二维码失败：'+e.message);return render()}
- q.innerHTML='<img alt="二维码" src="'+r.img+'"><div class="tip">请用'+S.platforms[p].name+' App 扫码并确认</div><div class="tip2">就在这部手机上？截图保存二维码，再到 App 的「扫一扫」里从相册选择这张图'+(r.link?'，或 <a href="'+esc(r.link)+'" target="_blank" rel="noopener">点此在 App/浏览器中打开登录链接</a>':'')+'。</div>';
+ q.innerHTML='<img alt="二维码"><div class="tip">请用'+S.platforms[p].name+' App 扫码并确认</div><div class="tip2">就在这部手机上？截图保存二维码，再到 App 的「扫一扫」里从相册选择这张图'+(r.link?'，或 <a href="'+esc(r.link)+'" target="_blank" rel="noopener">点此在 App/浏览器中打开登录链接</a>':'')+'。</div>';
+ if(/^data:image\/png;base64,[A-Za-z0-9+\/=]+$/.test(r.img||''))q.querySelector('img').src=r.img;
  const until=Date.now()+r.ttl*1000;const tip=q.querySelector('.tip');
  polls[p]=setInterval(async()=>{
   if(Date.now()>until){stop(p);tip.innerHTML='二维码已过期 <button id="re-'+p+'">刷新</button>';document.getElementById('re-'+p).onclick=()=>startQr(p);return}
