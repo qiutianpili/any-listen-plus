@@ -1,0 +1,6 @@
+[Unit]
+Description=Watch AL gateway users.json for al-accsrc
+[Path]
+PathChanged=/opt/al-gateway/users.json
+[Install]
+WantedBy=multi-user.target
