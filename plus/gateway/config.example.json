@@ -1,5 +1,8 @@
 {
   "cfTeam": "https://your-team.cloudflareaccess.com",
   "cfAud": "your-access-application-aud-tag",
-  "adminEmails": ["you@example.com"]
+  "adminEmails": [
+    "you@example.com"
+  ],
+  "origin": "https://music.example.com"
 }
