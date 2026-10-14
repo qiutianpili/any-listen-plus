@@ -122,15 +122,17 @@
     setTimeout(function(){var f=i.closest('form');if(f&&f.requestSubmit)f.requestSubmit();else i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}))},150);
   }
   var IC={users:'M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z',
+    key:'M12.65 10A5.99 5.99 0 0 0 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6a5.99 5.99 0 0 0 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z',
     out:'M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z'};
   /* user management as a modal (iframe) so playback is never interrupted (2026-10-11) */
-  function openAdmin(){
+  function openAdmin(src,title){
+    src=src||'/__gw/admin';title=title||'用户管理'; /* also used for 账号音源 /al-login/ (2026-10-14) */
     if(document.getElementById('m-gw-modal'))return;
     var o=document.createElement('div');o.id='m-gw-modal';
     o.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center';
     o.innerHTML='<div style="position:relative;width:min(92vw,40rem);height:min(88vh,44rem);background:var(--color-content-background,#fff);border-radius:.75rem;box-shadow:0 .5rem 2rem rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;color:var(--color-primary,#5b6ee1);font-size:1rem;font-weight:600">用户管理<button type="button" aria-label="关闭" style="border:none;background:none;font-size:1.5rem;line-height:1;cursor:pointer;color:inherit;padding:0 .25rem">×</button></div>'+
-      '<div class="m-gw-body" style="position:relative;flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:none"><iframe src="/__gw/admin" scrolling="no" style="display:block;width:100%;height:300px;border:0;background:transparent"></iframe></div>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;color:var(--color-primary,#5b6ee1);font-size:1rem;font-weight:600">'+title+'<button type="button" aria-label="关闭" style="border:none;background:none;font-size:1.5rem;line-height:1;cursor:pointer;color:inherit;padding:0 .25rem">×</button></div>'+
+      '<div class="m-gw-body" style="position:relative;flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:none"><iframe src="'+src+'" scrolling="no" style="display:block;width:100%;height:300px;border:0;background:transparent"></iframe></div>'+
       '<div class="m-gw-sbt" style="position:absolute;right:3px;width:8px;bottom:6px;display:none;touch-action:none;z-index:2"><div style="position:absolute;left:0;right:0;top:0;border-radius:4px;background:rgba(91,110,225,.6);touch-action:none;cursor:grab"></div></div></div>';
     function close(){o.remove();document.removeEventListener('keydown',esc,true)}
     function esc(e){if(e.key==='Escape'){e.stopPropagation();close()}}
@@ -158,7 +160,7 @@
     }
     var d=document.createElement('div');d.id='m-gw-menu';d.style.cssText='margin-top:auto;padding:.5rem 0 .75rem;flex:none';
     d.innerHTML='<div style="padding:0 1.25rem .25rem;font-size:.75rem;color:var(--color-font,inherit);display:flex;align-items:center;gap:.25rem"><span style="opacity:.55">当前用户：<span id="m-gw-uname"></span></span><button type="button" id="m-gw-ren" title="修改用户名" aria-label="修改用户名" style="border:none;background:none;padding:.15rem;cursor:pointer;color:inherit;opacity:.55;display:flex;line-height:0"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button></div>'+
-      '<ul class="aside-nav '+h+'" role="menu">'+(me.role==='admin'?item('m-gw-admin','用户管理',IC.users,'/__gw/admin'):'')+item('m-gw-out','退出登录',IC.out,'/__gw/logout')+'</ul>';
+      '<ul class="aside-nav '+h+'" role="menu">'+item('m-gw-acc','账号音源',IC.key,'/al-login/')+(me.role==='admin'?item('m-gw-admin','用户管理',IC.users,'/__gw/admin'):'')+item('m-gw-out','退出登录',IC.out,'/__gw/logout')+'</ul>';
     aside.appendChild(d);
     document.getElementById('m-gw-uname').textContent=me.name;
     document.getElementById('m-gw-ren').addEventListener('click',function(){
@@ -167,6 +169,7 @@
         if(j.ok){me.name=j.name;document.getElementById('m-gw-uname').textContent=j.name}else alert(j.err||'修改失败')}).catch(function(){alert('修改失败，请稍后再试')});
     });
     var ad=document.getElementById('m-gw-admin');if(ad)ad.addEventListener('click',function(e){e.preventDefault();openAdmin()});
+    var ac=document.getElementById('m-gw-acc');if(ac)ac.addEventListener('click',function(e){e.preventDefault();openAdmin('/al-login/','账号音源（扫码登录）')});
   }
   function tick(){autoLogin();menu()}
   window.__alObs(tick);
