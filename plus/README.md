@@ -75,14 +75,14 @@
    ```bash
    mkdir -p /opt/al-gateway /opt/al-users
    cp plus/gateway/gw.js /opt/al-gateway/
-   cp plus/gateway/config.example.json /opt/al-gateway/config.json   # 填 Access 团队域名、AUD、管理员邮箱
+   cp plus/gateway/config.example.json /opt/al-gateway/config.json   # 填 Access 团队域名、AUD、管理员邮箱、站点 origin（https://你的域名，用于 POST 的同源校验）
    cp plus/gateway/users.example.json /opt/al-gateway/users.json     # 填管理员实例的 Any Listen 密码
    cp plus/deploy/*.service /etc/systemd/system/ && systemctl daemon-reload
    systemctl enable --now al-gateway
    cp plus/gateway/daily.py /opt/al-gateway/
    systemctl enable --now al-daily.timer   # 每日推荐
    ```
-   管理员实例监听 9500（原 `any-listen` 服务），其他用户实例从 9501 起，由网关自动创建 `any-listen-u@<id>` 服务。
+   管理员实例监听 9500（原 `any-listen` 服务），其他用户实例从 9501 起，由网关自动创建 `any-listen-u@<id>` 服务。每个用户实例以独立系统用户 `al-<id>` 运行（网关创建/删除），数据目录 0700；id 单调递增、删除后不复用。
 5. Cloudflare：用 Tunnel 把域名指向本机 nginx，并建一个 Access 应用，在策略里放行要使用的邮箱（可开启邮箱验证码、Google、GitHub 登录）。网关只信任 Access 签发的 JWT。
 6. 账号音源（可选）：见 [account-sources/README.md](./account-sources/README.md)。
 
