@@ -19,7 +19,7 @@ const DOC_STYLE_ID = 'folia-al-doc-style';
 const ensureDocStyle = () => {
     if (document.getElementById(DOC_STYLE_ID)) return;
     const props = (css.match(/@property\s+--[\w-]+\s*\{[^}]*\}/g) || []).join('\n');
-    const fonts = [400, 500].map(w => `@font-face{font-family:'Folia Noto Serif SC';font-style:normal;font-weight:${w};font-display:swap;src:url('https://cdn.jsdmirror.cn/npm/@fontsource/noto-serif-sc@5.2.9/files/noto-serif-sc-chinese-simplified-${w}-normal.woff2') format('woff2')}`).join('\n');
+    const fonts = [400, 500].map(w => `@font-face{font-family:'Folia Noto Serif SC';font-style:normal;font-weight:${w};font-display:swap;src:url('/__m/folia/fonts/noto-serif-sc-chinese-simplified-${w}-normal.woff2') format('woff2')}`).join('\n');
     const st = document.createElement('style');
     st.id = DOC_STYLE_ID;
     st.textContent = fonts + '\n' + props;
