@@ -20,6 +20,8 @@ JV=${1:?JSVER}; CV=${2:?CSSVER}
 
 ST=$(mktemp -d); trap 'rm -rf "$ST"' EXIT
 mkdir -p "$ST/m"; cp ../web/mobile.js ../web/mobile.css "$ST/m/"; cp -r dist "$ST/m/folia"
+# self-hosted Noto Serif SC (Folia lyrics font), fetched once into fonts/ and shipped under /__m/folia/fonts/
+mkdir -p fonts "$ST/m/folia/fonts"; for w in 400 500; do f=noto-serif-sc-chinese-simplified-$w-normal.woff2; [ -s "fonts/$f" ] || curl -fsSL -o "fonts/$f" "https://cdn.jsdelivr.net/npm/@fontsource/noto-serif-sc@5.2.9/files/$f"; cp "fonts/$f" "$ST/m/folia/fonts/"; done
 rm -f "$ST"/m/folia/*.map "$ST"/m/folia/chunks/*.map
 (cd "$ST" && tar czf m.tgz m)
 scp -q "$ST/m.tgz" "$SSH_HOST:/tmp/folia-m.tgz"
