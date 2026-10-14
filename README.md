@@ -8,8 +8,11 @@
 - 用户管理页：人数上限、删除、踢下线、向全体或指定用户推送通知（弹窗 / 右下角）
 - 每台设备独立播放队列、歌词同步校正、定时关闭（悬停弹出）、歌单内查找、倍速重置
 - 手机端完整适配，电脑端页面大小可调
+- Folia 歌词详情页：移植 Folia Major 的歌词可视化，可与原版详情页一键切换，按需加载
 
 全部增强位于 [`plus/`](./plus/)，部署说明见 [plus/README.md](./plus/README.md)。
+
+Folia 详情页基于 [Folia Major](https://github.com/chthollyphile/folia-major)（作者 chthollyphile，AGPL-3.0）。
 
 ---
 
