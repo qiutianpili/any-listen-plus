@@ -20,7 +20,12 @@
 - **默认不共享**。管理员可在登录页把**自己的**账号共享给指定用户（默认全部关闭）；被共享的用户只在自己没登录的平台上使用管理员账号。
 - 每个用户可在登录页关掉"启用我的账号音源"，关掉后脚本立即失败、交给其他音源。
 - 凭据只存服务器：`state/users/<user>/{wy,tx,kg}.json`（0600，目录 0700，属主独立系统用户）；QQ 会话由 qq-music-api 用 AES-256-GCM 加密保存。日志不记录 cookie / token / 播放链接。
-- `/int/url`（脚本用的内部接口）不经 nginx 暴露。
+- `/int/url`（脚本用的内部接口）在单独的本机端口 `ACC_INT_PORT`（默认 127.0.0.1:9412），nginx 只转发 `/al-login` 到 9410；带反斜杠 / `%5c` / 编码斜杠的路径一律拒绝。token 只接受 48 位十六进制，常量时间比较。
+- 每个播放器实例以独立系统用户 `al-<id>` 运行（数据目录 0700，`config.cjs` 与脚本文件 0600），互相读不到对方的 token 与歌单。
+- 播放器 unit 的 `ExecStartPre=+-… install.py install %i --force` 让每次启动前都写入**本人**当前的脚本（网关新建实例时也会先删掉从管理员目录复制来的脚本），所以新用户第一次启动就是自己的 token、空的登录状态。
+- 网关删除用户时调用 `install.py purge <id>` 清掉该 id 的 token 记录和已保存的平台登录；网关分配的 id 单调递增、不复用；每条记录还绑定"网关账号（邮箱+创建时间）"，对不上就重置。
+- `install.py rotate` 轮换 token（停止中的实例立即生效，运行中的下次启动生效）。
+- qq-music-api（9411）建议用 nftables 限制只有 al-accsrc 的系统用户能连（见 `../deploy/nftables.conf.example`）；不要配置全局 QQ cookie。
 
 ## 取链与回退
 
@@ -41,11 +46,11 @@ cp lx-script/account-source.template.js deploy/install.py deploy/al-accsrc-users
 chown -R alaccsrc: /opt/al-accsrc/{state,tmp}; chmod 700 /opt/al-accsrc/{state,tmp}
 cp deploy/al-accsrc*.{service,path,timer} /etc/systemd/system/ && systemctl daemon-reload
 systemctl enable --now al-accsrc al-accsrc-users.path al-accsrc-users.timer
-python3 /opt/al-accsrc/bin/install.py install      # 需在各 AL 实例停止时执行
+python3 /opt/al-accsrc/bin/install.py install      # 需在各 AL 实例停止时执行；之后由播放器 unit 的 ExecStartPre 自动维护
 # nginx：加入 deploy/nginx.location.example，nginx -t && systemctl reload nginx
 ```
 
-`server.js` 的环境变量：`ACC_PORT`(9410) `QQ_PORT`(9411) `ACC_STATE` `ACC_GATEWAY`(http://127.0.0.1:9400) `ACC_ADMIN_USER`(admin) `ACC_USERS_JSON`。
+`server.js` 的环境变量：`ACC_PORT`(9410) `ACC_INT_PORT`(9412) `QQ_PORT`(9411) `ACC_STATE` `ACC_GATEWAY`(http://127.0.0.1:9400) `ACC_ADMIN_USER`(admin) `ACC_USERS_JSON`。
 
 AL 升级或 loader 更新会覆盖 loader 的 `main.js`，之后重跑 `install.py install` 即可。回滚：`install.py remove`，再移除 nginx location 与 systemd 单元。
 
