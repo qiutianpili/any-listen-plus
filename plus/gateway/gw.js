@@ -76,7 +76,7 @@ const check = (pw, h) => { const [s, d] = h.split(':'); const x = crypto.scryptS
 const sign = v => v + '.' + crypto.createHmac('sha256', SECRET).update(v).digest('hex').slice(0, 32);
 // Cloudflare Access login (2026-10-10): only the admin email is allowed; whitelist passwords no longer used
 const https = require('https');
-// fill in /opt/al-gateway/config.json: {"cfTeam":"https://<team>.cloudflareaccess.com","cfAud":"<Access app AUD tag>","adminEmails":["you@example.com"]}
+// fill in /opt/al-gateway/config.json: {"cfTeam":"https://<team>.cloudflareaccess.com","cfAud":"<Access app AUD tag>","adminEmails":["you@example.com"],"origin":"https://music.example.com"}
 const GW_CFG = JSON.parse(fs.readFileSync(DIR + '/config.json', 'utf8'));
 const CF_TEAM = String(GW_CFG.cfTeam || '').replace(/\/+$/, ''), CF_AUD = String(GW_CFG.cfAud || '');
 const ADMIN_EMAILS = (GW_CFG.adminEmails || []).map(e => String(e).toLowerCase());
@@ -147,17 +147,50 @@ var y0=null,s0=0;h.addEventListener('pointerdown',function(e){y0=e.clientY;s0=se
 h.addEventListener('pointermove',function(e){if(y0===null)return;var ch=innerHeight,sh=se.scrollHeight,th=h.offsetHeight;se.scrollTop=s0+(e.clientY-y0)*(sh-ch)/Math.max(1,ch-th)});
 h.addEventListener('pointerup',function(){y0=null});h.addEventListener('pointercancel',function(){y0=null});
 t.addEventListener('pointerdown',function(e){if(e.target!==t)return;var r=e.clientY/innerHeight;se.scrollTop=r*(se.scrollHeight-innerHeight)});})()</script></body></html>`;
+// CSRF (2026-10-14): every POST to /__gw/* must come from our own origin; admin POSTs additionally need the
+// per-admin form token (or the X-AL header that only same-origin script can set).
+const ORIGIN = String(GW_CFG.origin || process.env.GW_ORIGIN || '').replace(/\/+$/, ''); // public https origin of the site
+const csrfTok = u => crypto.createHmac('sha256', SECRET).update('csrf|' + u.name).digest('hex').slice(0, 32);
+// Origin may be "null" for form posts under a strict Referrer-Policy; then trust the browser-set Sec-Fetch-Site.
+const sameOrigin = req => { const o = req.headers.origin, s = req.headers['sec-fetch-site']; if (o && o !== 'null') return o === ORIGIN; if (s) return s === 'same-origin'; return !o && req.headers['x-al'] === '1'; };
+const csrfOk = (u, v) => { const a = Buffer.from(String(v || '')), b = Buffer.from(csrfTok(u)); return a.length === b.length && crypto.timingSafeEqual(a, b); };
 function send(res, code, body, headers = {}) { res.writeHead(code, Object.assign({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }, headers)); res.end(body); }
 function readBody(req) { return new Promise(r => { let b = ''; req.on('data', d => { b += d; if (b.length > 1e5) req.destroy(); }); req.on('end', () => r(new URLSearchParams(b))); }); }
 const loginPage = (err = '') => page('登录 Any Listen', `<h1>Any Listen 登录</h1>${err ? `<div class="err">${esc(err)}</div>` : ''}<form method="post" action="/__gw/login"><label>用户名<input name="u" autocomplete="username" required></label><label>密码<input name="p" type="password" autocomplete="current-password" required></label><button style="width:100%">登录</button></form><div class="tip">仅限白名单用户</div>`);
 function run(cmd, args) { return new Promise((ok, no) => execFile(cmd, args, { timeout: 60000 }, (e, so, se) => e ? no(new Error(se || e.message)) : ok(so))); }
 const SKIP_CFG = /^player\.|^list\.|^playDetail|^common\.lastPlay/;
+// security (2026-10-14): each player runs as its own system user al-<id> (data dir 0700), ids are never reused,
+// and the admin's per-user account-source script/token is stripped from the cloned extension dir before first start.
+const sysUser = name => 'al-' + name;
+const SAFE_ID = /^[A-Za-z0-9_]{1,24}$/;
+const ACC_INSTALL = '/opt/al-accsrc/bin/install.py';
+function stripClonedAccountSource(extDir) {
+  const base = path.join(extDir, 'datas', 'lx-api-source-loader'), cf = path.join(base, 'configuration.json');
+  for (const dn0 of ['gdstudio', 'online-metadata', 'lx-api-source-loader']) try { fs.rmSync(path.join(extDir, 'datas', dn0, 'output.log'), { force: true }); } catch (e) {}
+  let c; try { c = JSON.parse(fs.readFileSync(cf, 'utf8')); } catch (e) { return; }
+  const gone = new Set((c.importedScriptSources || []).filter(x => x && x.fileName === 'account-source.js').map(x => x.id));
+  if (!gone.size) return;
+  c.importedScriptSources = (c.importedScriptSources || []).filter(x => !gone.has(x.id));
+  for (const k of ['sourceOrder', 'enabledScripts']) if (Array.isArray(c[k])) c[k] = c[k].filter(x => !gone.has(x));
+  for (const g of gone) if (/^[0-9a-f]{32}$/.test(g)) fs.rmSync(path.join(base, 'storage', 'scripts', g), { force: true });
+  fs.writeFileSync(cf, JSON.stringify(c, null, '\t'));
+}
+function allocPort() {
+  // monotonic: a deleted user's id (u<port>) is never handed to someone else
+  let p = Math.max(9501, settings.nextPort || 0, ...users.map(x => x.port + 1));
+  while (users.some(x => x.port === p) || fs.existsSync(path.join(UROOT, 'u' + p))) p++;
+  settings.nextPort = p + 1; saveSettings();
+  return p;
+}
 async function createInstance(name, port, alpw) {
+  if (!SAFE_ID.test(name)) throw new Error('bad id');
   const d = path.join(UROOT, name, 'data');
-  fs.mkdirSync(path.join(d, 'app'), { recursive: true });
-  fs.writeFileSync(path.join(d, 'config.cjs'), `module.exports = {\n  port: '${port}',\n  bindIp: '127.0.0.1',\n  'upstreamProxy.enabled': true,\n  'upstreamProxy.header': 'x-real-ip',\n  allowPublicDir: ['/srv/music'],\n  password: '${alpw}'\n}\n`);
+  await run('useradd', ['--system', '--no-create-home', '--home-dir', path.join(UROOT, name), '--shell', '/usr/sbin/nologin', '--user-group', sysUser(name)]).catch(e => { if (!/already exists/.test(e.message)) throw e; });
+  fs.mkdirSync(path.join(d, 'app'), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(d, 'config.cjs'), `module.exports = {\n  port: '${port}',\n  bindIp: '127.0.0.1',\n  'upstreamProxy.enabled': true,\n  'upstreamProxy.header': 'x-real-ip',\n  allowPublicDir: ['/srv/music'],\n  password: '${alpw}'\n}\n`, { mode: 0o600 });
   // copy app settings (extensions, LX sources, online search) but not playlists/play state
   await run('cp', ['-a', path.join(ADMIN_DATA, 'app', 'extension'), path.join(d, 'app', 'extension')]);
+  stripClonedAccountSource(path.join(d, 'app', 'extension'));
   try {
     const c = JSON.parse(fs.readFileSync(path.join(ADMIN_DATA, 'app', 'config.json'), 'utf8'));
     const out = {}; for (const k of Object.keys(c)) if (!SKIP_CFG.test(k) || k === 'player.playbackRate') out[k] = c[k];
@@ -166,19 +199,26 @@ async function createInstance(name, port, alpw) {
     if (out.setting && typeof out.setting === 'object') { out.setting = { ...out.setting, 'player.playbackRate': 1, 'player.volume': 0.5, 'player.volumeMute': false, 'player.preservesPitch': false }; }
     fs.writeFileSync(path.join(d, 'app', 'config.json'), JSON.stringify(out, null, '\t'));
   } catch (e) { console.error('config copy', e.message); }
-  await run('chown', ['-R', 'anylisten:anylisten', path.join(UROOT, name)]);
+  await run('chown', ['-R', sysUser(name) + ':' + sysUser(name), path.join(UROOT, name)]);
+  fs.chmodSync(path.join(UROOT, name), 0o700); fs.chmodSync(d, 0o700);
+  // the unit's ExecStartPre (install.py install %i --force) writes this user's own account-source script before start
   await run('systemctl', ['enable', '--now', 'any-listen-u@' + name]);
 }
 async function removeInstance(name) {
+  if (!SAFE_ID.test(name)) return;
   await run('systemctl', ['disable', '--now', 'any-listen-u@' + name]).catch(() => {});
   fs.rmSync(path.join(UROOT, name), { recursive: true, force: true });
+  // drop this id's account-source record + saved platform logins (al-accsrc reloads config automatically)
+  if (fs.existsSync(ACC_INSTALL)) await run('python3', [ACC_INSTALL, 'purge', name]).catch(e => console.error('accsrc purge', name, e.message));
+  await run('userdel', [sysUser(name)]).catch(() => {});
 }
+const sendAdmin = (res, me, html) => send(res, 200, html.replace(/(<form method="post"[^>]*>)/g, `$1<input type="hidden" name="_csrf" value="${csrfTok(me)}">`));
 async function adminPage(req, res, me, msg = '', err = '') {
   let mem = ''; try { mem = (await run('free', ['-m'])).split('\n')[1].trim().split(/\s+/); mem = `可用内存 ${mem[6]} MB / ${mem[1]} MB`; } catch (e) {}
   const up = {}; for (const u of users) up[u.name] = await portUp(u.port);
   const nUsers = users.filter(u => u.role !== 'admin').length;
   const rows = users.map(u => `<tr><td data-l="用户">${esc(dn(u))}${dn(u) !== u.name ? `<div class="tip" style="margin:0">${esc(u.name)}</div>` : ''}</td><td data-l="身份" class="em">${u.role === 'admin' ? '管理员' : (u.email ? esc(u.email) : '用户（已停用）')}</td><td data-l="状态">${up[u.name] ? '运行中' : '休眠'}</td><td data-l="操作" class="ops">${u === me ? '' : `<form method="post" action="/__gw/admin/kick" style="display:inline" onsubmit="return confirm('把 ${esc(dn(u))} 踢下线？他需要重新登录才能继续使用')"><input type="hidden" name="u" value="${esc(u.name)}"><button class="del" style="background:#f0a020">踢下线</button></form>`}${u.role === 'admin' ? '' : ` <form method="post" action="/__gw/admin/del" style="display:inline" onsubmit="return confirm('删除用户 ${esc(dn(u))}？他的歌单和播放记录会一并删除，无法恢复')"><input type="hidden" name="u" value="${esc(u.name)}"><button class="del">删除</button></form>`}</td></tr>`).join('');
-  send(res, 200, page('用户管理', `<h1>用户管理</h1>${msg ? `<div class="ok">${esc(msg)}</div>` : ''}${err ? `<div class="err">${esc(err)}</div>` : ''}<div class="tip" style="margin:0 0 12px">登录使用 Cloudflare Access（邮箱验证码、Google 或 GitHub）。管理员：${esc(ADMIN_EMAILS.join('、'))}；白名单里的其他邮箱首次登录时自己设置用户名。</div><table class="ut"><tr><th>用户</th><th>身份</th><th>状态</th><th>操作</th></tr>${rows}</table>
+  sendAdmin(res, me, page('用户管理', `<h1>用户管理</h1>${msg ? `<div class="ok">${esc(msg)}</div>` : ''}${err ? `<div class="err">${esc(err)}</div>` : ''}<div class="tip" style="margin:0 0 12px">登录使用 Cloudflare Access（邮箱验证码、Google 或 GitHub）。管理员：${esc(ADMIN_EMAILS.join('、'))}；白名单里的其他邮箱首次登录时自己设置用户名。</div><table class="ut"><tr><th>用户</th><th>身份</th><th>状态</th><th>操作</th></tr>${rows}</table>
 <div class="tip" style="margin:-8px 0 14px">普通用户 ${nUsers} / ${settings.maxUsers} 人（不含管理员）</div>
 <h2 style="font-size:16px;color:#5b6ee1;margin:22px 0 8px">主页公告</h2>
 <form method="post" action="/__gw/admin/notice"><label>标题（可不填）<input name="title" maxlength="40" placeholder="公告" value="${esc(notice ? notice.title : '')}"></label>
@@ -208,6 +248,7 @@ function proxyHttp(req, res, port) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://x'), me = await sessionUser(req);
+    if (req.method !== 'GET' && req.method !== 'HEAD' && url.pathname.startsWith('/__gw/') && !sameOrigin(req)) return send(res, 403, 'bad origin', { 'Content-Type': 'text/plain' });
     if (url.pathname === '/__gw/login') return send(res, 302, '', { Location: '/' });
     if (url.pathname === '/__gw/logout') return send(res, 302, '', { Location: '/cdn-cgi/access/logout' });
     if (!me) {
@@ -220,10 +261,10 @@ const server = http.createServer(async (req, res) => {
           const n = String((await readBody(req)).get('u') || '').trim(), e = nameErr(n);
           if (e) return send(res, 200, regPage(e, n));
           if (users.some(x => String(x.email || '').toLowerCase() === req._email)) return send(res, 302, '', { Location: '/' });
-          let port = 9501; while (users.some(x => x.port === port)) port++;
-          const id = 'u' + port, alpw = crypto.randomBytes(12).toString('hex');
-          await createInstance(id, port, alpw);
-          users.push({ name: id, display: n, role: 'user', port, email: req._email, ver: 0, alpw, created: new Date().toISOString() }); saveUsers(); touch({ name: id });
+          const port = allocPort(), id = 'u' + port, alpw = crypto.randomBytes(12).toString('hex');
+          const nu = { name: id, display: n, role: 'user', port, email: req._email, ver: 0, alpw, created: new Date().toISOString() };
+          users.push(nu); saveUsers(); touch({ name: id });
+          try { await createInstance(id, port, alpw); } catch (e) { console.error('createInstance', id, e.message); users = users.filter(x => x !== nu); saveUsers(); await removeInstance(id).catch(() => {}); return send(res, 500, page('出错了', '<h1>创建播放器失败</h1><p>请稍后重试或联系管理员。</p>')); }
           console.log('register', id, n, req._email);
           return send(res, 302, '', { Location: '/' });
         }
@@ -265,9 +306,11 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/__gw/me') return send(res, 200, JSON.stringify({ name: dn(me), role: me.role, k: me.alpw || '' }), { 'Content-Type': 'application/json' });
     if (url.pathname.startsWith('/__gw/admin')) {
       if (me.role !== 'admin') return send(res, 403, page('无权限', '<h1>仅管理员可用</h1><p><a href="/">返回</a></p>'));
+      if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'POST') return send(res, 405, 'method', { 'Content-Type': 'text/plain' });
       if (req.method === 'POST') {
         const b = await readBody(req), name = b.get('u') || '', pw = b.get('p') || '';
-        if (url.pathname === '/__gw/admin/add') return adminPage(req, res, me, '', '添加用户请联系 Hark');
+        if (req.headers['x-al'] !== '1' && !csrfOk(me, b.get('_csrf'))) return send(res, 403, page('请求无效', '<h1>请求已过期</h1><p><a href="/__gw/admin">刷新用户管理</a></p>'));
+        if (url.pathname === '/__gw/admin/add') return adminPage(req, res, me, '', '请把对方的邮箱加入 Cloudflare Access 白名单，对方首次登录时会自己创建账号');
         if (url.pathname === '/__gw/admin/pw') return adminPage(req, res, me, '', '已改为 Access 登录，此功能暂停');
         if (url.pathname === '/__gw/admin/add') {
           const email = String(b.get('e') || '').trim().toLowerCase();
@@ -276,10 +319,9 @@ const server = http.createServer(async (req, res) => {
           if (users.some(x => x.name.toLowerCase() === name.toLowerCase())) return adminPage(req, res, me, '', '用户名已存在');
           if (ADMIN_EMAILS.includes(email) || users.some(x => String(x.email || '').toLowerCase() === email)) return adminPage(req, res, me, '', '这个邮箱已经绑定了用户');
           if (users.filter(x => x.role !== 'admin').length >= settings.maxUsers) return adminPage(req, res, me, '', `已达用户上限 ${settings.maxUsers} 人，可先调高上限或删除用户`);
-          let port = 9501; while (users.some(x => x.port === port)) port++;
-          const alpw = crypto.randomBytes(12).toString('hex');
+          const port = allocPort(), alpw = crypto.randomBytes(12).toString('hex');
+          users.push({ name, role: 'user', port, email, ver: 0, alpw, created: new Date().toISOString() }); saveUsers();
           await createInstance(name, port, alpw);
-          users.push({ name, role: 'user', port, email, ver: 0, alpw }); saveUsers();
           touch({ name });
           const cf = await cfAllow(email, true);
           return adminPage(req, res, me, `已添加 ${name}（${email}），播放器大约 30 秒后可用${cf === true ? '，已在 Cloudflare 放行' : ''}`, cf === true ? '' : '还需在 Cloudflare Access 放行这个邮箱，他才能登录');
