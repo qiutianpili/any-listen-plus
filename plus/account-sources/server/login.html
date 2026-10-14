@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>账号音源</title>
+<style>
+:root{--bg:#0f1115;--card:#181b22;--fg:#e8eaf0;--mut:#9aa0ad;--acc:#4f8cff;--ok:#2fbf71;--warn:#e6a23c;--bad:#e5534b;--line:#262a33}
+@media (prefers-color-scheme:light){:root{--bg:#f4f5f7;--card:#fff;--fg:#1c1f26;--mut:#6b7280;--line:#e5e7eb}}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:560px;margin:0 auto;padding:16px 14px calc(24px + env(safe-area-inset-bottom))}
+h1{font-size:20px;margin:6px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}
+.row{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.name{font-weight:600;font-size:16px}.st{font-size:13px;color:var(--mut)}.st b{color:var(--fg)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--mut)}.dot.on{background:var(--ok)}.dot.sh{background:var(--warn)}
+button{appearance:none;border:0;border-radius:10px;padding:8px 14px;font-size:14px;background:var(--acc);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}button.red{background:var(--bad)}
+button:disabled{opacity:.5}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.qr{margin-top:12px;text-align:center}.qr img{width:220px;height:220px;background:#fff;border-radius:10px;padding:8px;image-rendering:pixelated}
+.qr .tip{font-size:13px;color:var(--mut);margin-top:6px}.qr .tip2{font-size:12px;color:var(--mut);margin-top:6px;line-height:1.6}
+.sw{position:relative;width:46px;height:28px;flex:none}.sw input{display:none}.sw span{position:absolute;inset:0;border-radius:14px;background:var(--line);transition:.2s}
+.sw span:after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s}
+.sw input:checked+span{background:var(--ok)}.sw input:checked+span:after{left:21px}
+.users .row{padding:8px 0;border-top:1px solid var(--line)}.users .row:first-of-type{border-top:0}
+.foot{color:var(--mut);font-size:12px;margin-top:16px}a{color:var(--acc)}
+.err{color:var(--bad);font-size:13px;margin-top:8px}
+</style></head><body><div class="wrap">
+<h1>账号音源</h1>
+<div class="sub" id="who">加载中…</div>
+<div class="card"><div class="row"><div><div class="name">启用我的账号音源</div><div class="st">开启后，播放网易云 / QQ / 酷狗的歌曲时优先用你自己登录的账号取链接（含账号有权限的 VIP 歌曲），失败自动回退到其他音源。</div></div>
+<label class="sw"><input type="checkbox" id="en"><span></span></label></div></div>
+<div id="plats"></div>
+<div class="card users" id="share" hidden><div class="name">把管理员账号共享给用户</div><div class="st" style="margin-bottom:6px">默认关闭。打开后，该用户在<b>自己没登录</b>的平台上会使用你的账号取链接。</div><div id="ulist"></div></div>
+<div class="foot">登录凭据只保存在服务器上本用户自己的目录中，不会给其他用户使用（除非管理员主动共享自己的账号）。二维码约 3 分钟有效。用对应 App 扫码：网易云音乐 / QQ音乐 / 酷狗音乐（概念版或正式版）。<span id="back"><br><a href="/">← 返回播放器</a></span></div>
+</div>
+<script>
+const $=s=>document.querySelector(s);if(self!==top){$('#back').remove();document.querySelector('h1').style.display='none'}const API='/al-login/api/';
+const req=(p,b)=>fetch(API+p,b?{method:'POST',headers:{'Content-Type':'application/json','X-AL':'1'},body:JSON.stringify(b)}:{cache:'no-store'}).then(r=>r.json().then(j=>{if(!r.ok)throw new Error(j.error||r.status);return j}));
+let S=null;const polls={};
+const esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function render(){
+ $('#who').textContent='当前用户：'+S.user+(S.admin?'（管理员）':'');$('#en').checked=S.enabled;
+ const box=$('#plats');
+ for(const [p,i] of Object.entries(S.platforms)){
+  let c=document.getElementById('p-'+p);if(!c){c=document.createElement('div');c.className='card';c.id='p-'+p;c.innerHTML='<div class="row"><div><div class="name"></div><div class="st"></div></div></div><div class="btns"></div><div class="qr" hidden></div><div class="err" hidden></div>';box.appendChild(c)}
+  c.querySelector('.name').textContent=i.name;
+  c.querySelector('.st').innerHTML=i.loggedIn?'<span class="dot on"></span>已登录：<b>'+esc(i.nick||'(未知昵称)')+'</b>'+(i.vip?' · VIP':''):i.sharedFromAdmin?'<span class="dot sh"></span>未登录 · 正在使用管理员共享的账号':'<span class="dot"></span>未登录';
+  if(!polls[p]){const b=c.querySelector('.btns');b.innerHTML=i.loggedIn?'<button class="ghost" data-a="refresh">检查状态</button><button data-a="qr">重新扫码</button><button class="red" data-a="logout">退出登录</button>':'<button data-a="qr">扫码登录</button>';b.querySelectorAll('button').forEach(x=>x.onclick=()=>act(p,x.dataset.a,x))}
+ }
+ const sh=$('#share');sh.hidden=!S.admin||!S.users||!S.users.length;
+ if(!sh.hidden)$('#ulist').innerHTML=S.users.map(u=>'<div class="row"><div>'+esc(u.display)+' <span class="st">'+esc(u.name)+'</span></div><label class="sw"><input type="checkbox" data-u="'+esc(u.name)+'"'+(u.share?' checked':'')+'><span></span></label></div>').join('');
+ sh.querySelectorAll('input[data-u]').forEach(x=>x.onchange=()=>req('share',{user:x.dataset.u,share:x.checked}).then(j=>{S=j;render()}).catch(e=>{alert(e.message);load()}));
+}
+function err(p,m){const e=document.querySelector('#p-'+p+' .err');e.hidden=!m;e.textContent=m||''}
+async function act(p,a,btn){
+ err(p,'');
+ if(a==='logout'){if(!confirm('退出该平台账号？'))return;S=await req(p+'/logout',{});return render()}
+ if(a==='refresh'){btn.disabled=true;try{const r=await req(p+'/refresh',{});err(p,r.ok?'':'登录状态可能已失效，请重新扫码');}catch(e){err(p,e.message)}btn.disabled=false;return load()}
+ if(a==='qr')startQr(p)
+}
+async function startQr(p){
+ stop(p);const c=document.getElementById('p-'+p),q=c.querySelector('.qr');q.hidden=false;q.innerHTML='<div class="tip">正在生成二维码…</div>';
+ c.querySelector('.btns').innerHTML='<button class="ghost" id="cancel-'+p+'">取消</button>';document.getElementById('cancel-'+p).onclick=()=>{stop(p);q.hidden=true;render()};
+ let r;try{r=await req(p+'/qr',{})}catch(e){q.hidden=true;err(p,'生成二维码失败：'+e.message);return render()}
+ q.innerHTML='<img alt="二维码" src="'+r.img+'"><div class="tip">请用'+S.platforms[p].name+' App 扫码并确认</div><div class="tip2">就在这部手机上？截图保存二维码，再到 App 的「扫一扫」里从相册选择这张图'+(r.link?'，或 <a href="'+esc(r.link)+'" target="_blank" rel="noopener">点此在 App/浏览器中打开登录链接</a>':'')+'。</div>';
+ const until=Date.now()+r.ttl*1000;const tip=q.querySelector('.tip');
+ polls[p]=setInterval(async()=>{
+  if(Date.now()>until){stop(p);tip.innerHTML='二维码已过期 <button id="re-'+p+'">刷新</button>';document.getElementById('re-'+p).onclick=()=>startQr(p);return}
+  try{const s=await req(p+'/check?key='+encodeURIComponent(r.key));
+   if(s.state==='scanned')tip.textContent='已扫码，请在手机上确认登录…';
+   else if(s.state==='confirmed'){stop(p);q.hidden=true;load()}
+   else if(s.state==='expired'){stop(p);tip.innerHTML='二维码已过期 <button id="re-'+p+'">刷新</button>';document.getElementById('re-'+p).onclick=()=>startQr(p)}
+   else if(s.state==='error'){stop(p);q.hidden=true;err(p,'登录失败：'+(s.message||'未知错误'));load()}
+  }catch(e){}
+ },2000);
+}
+function stop(p){if(polls[p]){clearInterval(polls[p]);delete polls[p]}}
+$('#en').onchange=e=>req('enable',{enabled:e.target.checked}).then(j=>{S=j;render()});
+function load(){return req('state').then(j=>{S=j;render()}).catch(e=>{$('#who').textContent='加载失败：'+e.message})}
+load();
+</script></body></html>
