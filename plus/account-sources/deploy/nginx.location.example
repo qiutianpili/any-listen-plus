@@ -1,0 +1,12 @@
+# Inside the server { } block of your Any Listen site, BEFORE "location / { ... }".
+# Only /al-login is exposed; al-accsrc's internal /int/url route stays on 127.0.0.1.
+# The site itself must already be protected (Cloudflare Access + the AL gateway), because
+# al-accsrc identifies the caller by asking the gateway (GET /__gw/push and /__gw/me with the caller's cookies).
+location ^~ /al-login {
+    proxy_pass http://127.0.0.1:9410;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 60s;
+    add_header Cache-Control "no-store" always;
+}
