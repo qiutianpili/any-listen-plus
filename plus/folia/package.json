@@ -1,0 +1,22 @@
+{
+  "name": "folia-al",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "AGPL-3.0",
+  "scripts": { "build": "vite build" },
+  "dependencies": {
+    "react": "19.3.0", "react-dom": "19.3.0", "framer-motion": "13.4.3", "zustand": "5.0.15",
+    "pixi.js": "8.21.0", "three": "0.185.1", "@react-three/fiber": "9.8.1", "@react-three/drei": "10.7.8",
+    "@react-three/postprocessing": "3.1.2", "postprocessing": "6.39.5", "@chenglou/pretext": "0.0.9",
+    "@paper-design/shaders-react": "0.0.80", "@paper-design/shaders": "0.0.80", "lucide-react": "1.48.0",
+    "i18next": "26.4.2", "react-i18next": "17.0.15", "react-colorful": "5.8.1", "twgl.js": "7.0.0",
+    "budoux": "0.9.3", "animejs": "4.5.0", "@xmldom/xmldom": "0.9.12", "@applemusic-like-lyrics/ttml": "1.0.1",
+    "dexie": "4.4.6", "fflate": "0.8.3", "opencc-js": "1.4.2", "wanakana": "5.3.1", "pinyin-pro": "3.29.3",
+    "i18next-browser-languagedetector": "8.2.1", "react-window": "2.3.3"
+  },
+  "devDependencies": {
+    "vite": "8.3.1", "@vitejs/plugin-react": "6.1.1", "tailwindcss": "4.3.3", "@tailwindcss/postcss": "4.3.3",
+    "postcss": "8.5.28", "autoprefixer": "10.6.1", "@types/react": "^19.3.0", "@types/react-dom": "^19.3.0", "@types/three": "^0.185.4"
+  }
+}
