@@ -13,6 +13,7 @@
 | `gateway/*.example.json` | 网关配置与用户列表示例 |
 | `patches/v0.11.0.json`、`patches/apply.js` | 对官方 v0.11.0 构建产物及音源加载扩展 lx-api-source-loader 0.1.7 的补丁（带 sha256 校验） |
 | `deploy/` | systemd 服务与 nginx 配置示例 |
+| `account-sources/` | 账号音源：网易云 / QQ / 酷狗扫码登录，用每个用户自己的账号取播放链接，见 [account-sources/README.md](./account-sources/README.md) |
 | `folia/` | Folia 详情页（Folia Major 歌词可视化移植）源码与构建脚本，见 [folia/README.md](./folia/README.md) |
 
 ## 功能
@@ -43,6 +44,11 @@
 - **电脑端页面大小**：主界面默认 125%，侧栏可调 80–200%；歌曲详情页单独调节，互不影响。
 - 详情页自下而上弹出，背景改为主题色渐变；进度条悬停显示时间。
 - **主页**：侧栏第一项，显示公告、推送和歌单卡片；「我喜欢」为爱心图标、「每日推荐」为太阳图标，其他歌单可设一个 emoji 作为封面（不使用歌曲封面或自定义图片）；从主页打开的歌单点「返回」回到主页。
+
+### 账号音源（扫码登录）
+- 侧栏「账号音源」弹窗打开 `/al-login/`：用网易云音乐 / QQ音乐 / 酷狗音乐 App 扫码登录**自己的**账号，可随时检查状态、退出、关闭开关。
+- 播放这三个平台的歌曲时，优先用本人账号取链接（含账号有权限的 VIP 歌曲，音质按设置逐级降到账号可得的最高档），失败自动回退到原有音源。
+- 每个用户的登录只给自己用；管理员可把自己的账号共享给指定用户（默认关闭）。详见 [account-sources/README.md](./account-sources/README.md)。
 
 ### Folia 详情页
 - 歌曲详情页可切换为 [Folia Major](https://github.com/chthollyphile/folia-major)（chthollyphile，AGPL-3.0）的歌词可视化：14 种歌词视觉模式、多种背景、各模式设置面板、静态模式。
@@ -78,6 +84,7 @@
    ```
    管理员实例监听 9500（原 `any-listen` 服务），其他用户实例从 9501 起，由网关自动创建 `any-listen-u@<id>` 服务。
 5. Cloudflare：用 Tunnel 把域名指向本机 nginx，并建一个 Access 应用，在策略里放行要使用的邮箱（可开启邮箱验证码、Google、GitHub 登录）。网关只信任 Access 签发的 JWT。
+6. 账号音源（可选）：见 [account-sources/README.md](./account-sources/README.md)。
 
 > 注意：不要让 CDN 缓存音频；补丁过的 `indexBzjGy48v.js` 需以 `no-cache` 提供，修改后记得清除 CDN 缓存。
 
