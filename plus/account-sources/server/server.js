@@ -7,7 +7,7 @@
  *   - qq-music-api (Koa) is required in-process and forced onto 127.0.0.1:QQ_PORT.
  *   - Public routes under /al-login/ (proxied by nginx behind Cloudflare Access): login page + API.
  *     The caller's identity is resolved by asking the Any Listen gateway (which verifies the CF Access JWT).
- *   - Internal route /int/url (NOT proxied by nginx): used by the LX source script inside each user's AL
+ *   - Internal route /int/url on its own listener ACC_INT_PORT (9412; nginx only proxies to ACC_PORT): used by the LX source script inside each user's AL
  *     instance; the script carries a per-user random token, so user A's script can never use user B's logins.
  *
  * Per-user storage: STATE_DIR/users/<name>/{wy,kg,tx}.json (0600). Nothing secret is ever logged.
@@ -20,6 +20,7 @@ const crypto = require('crypto');
 const BASE = process.env.ACC_BASE || '/opt/al-accsrc';
 const STATE = process.env.ACC_STATE || path.join(BASE, 'state');
 const PORT = +process.env.ACC_PORT || 9410;
+const INT_PORT = +process.env.ACC_INT_PORT || 9412; // /int/url only (LX scripts inside AL instances); nginx never proxies to it
 const QQ_PORT = +process.env.QQ_PORT || 9411;
 const GW = process.env.ACC_GATEWAY || 'http://127.0.0.1:9400';
 const ADMIN = process.env.ACC_ADMIN_USER || 'admin';
@@ -31,12 +32,14 @@ fs.mkdirSync(path.join(STATE, 'users'), { recursive: true, mode: 0o700 });
 const readJ = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return d; } };
 const writeJ = (f, o) => { fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 }); const t = f + '.tmp'; fs.writeFileSync(t, JSON.stringify(o), { mode: 0o600 }); fs.renameSync(t, f); };
 // config: { users: { <name>: { token, enabled, shareFromAdmin } } }
-let cfg = readJ(CFG_F, { users: {} }), cfgM = 0;
+// cfg.users is a prototype-less map keyed by gateway user id ("__proto__" & co. can never alias Object.prototype)
+const normCfg = (c) => { const u = Object.create(null); for (const [k, v] of Object.entries((c && c.users) || {})) if (v && typeof v === 'object') u[k] = v; return { ...c, users: u }; };
+let cfg = normCfg(readJ(CFG_F, { users: {} })), cfgM = 0;
 const saveCfg = () => { writeJ(CFG_F, cfg); try { cfgM = fs.statSync(CFG_F).mtimeMs; } catch (e) {} };
-const reloadCfg = () => { try { const m = fs.statSync(CFG_F).mtimeMs; if (m !== cfgM) { cfg = readJ(CFG_F, cfg); cfgM = m; } } catch (e) {} };
+const reloadCfg = () => { try { const m = fs.statSync(CFG_F).mtimeMs; if (m !== cfgM) { cfg = normCfg(readJ(CFG_F, cfg)); cfgM = m; } } catch (e) {} };
 const userCfg = (name) => {
-  if (!/^[A-Za-z0-9_-]{1,40}$/.test(name)) throw new Error('bad user');
-  if (!cfg.users[name]) { cfg.users[name] = { token: crypto.randomBytes(24).toString('hex'), enabled: true, shareFromAdmin: false }; saveCfg(); }
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(name)) throw new Error('bad user');
+  if (!Object.hasOwn(cfg.users, name)) { cfg.users[name] = { token: crypto.randomBytes(24).toString('hex'), enabled: true, shareFromAdmin: false }; saveCfg(); }
   return cfg.users[name];
 };
 const acctF = (user, p) => path.join(STATE, 'users', user, p + '.json');
@@ -191,7 +194,8 @@ const whoami = (req) => new Promise((ok) => {
   const get = (p) => new Promise((r) => { const q = http.get(GW + p, { headers: h, timeout: 5000 }, (res) => { let d = ''; res.on('data', x => d += x); res.on('end', () => { try { r(res.statusCode === 200 ? JSON.parse(d) : null); } catch (e) { r(null); } }); }); q.on('timeout', () => q.destroy()); q.on('error', () => r(null)); });
   Promise.all([get('/__gw/push?a=0'), get('/__gw/me')]).then(([p, m]) => {
     const v = p && m && p.u ? { name: String(p.u), display: m.name || p.u, admin: m.role === 'admin' } : null;
-    if (v) idCache.set(ckey, { v, exp: Date.now() + 60e3 }); ok(v);
+    if (v) { const now = Date.now(); if (idCache.size > 200) for (const [k, x] of idCache) if (x.exp < now || idCache.size > 200) idCache.delete(k); idCache.set(ckey, { v, exp: now + 10e3 }); }
+    ok(v);
   });
 });
 const allUsers = () => { try { return JSON.parse(fs.readFileSync(process.env.ACC_USERS_JSON || '/opt/al-gateway/users.json', 'utf8')).map(u => ({ name: u.name, display: u.display || u.name, admin: u.role === 'admin' })); } catch (e) { return []; } };
@@ -199,12 +203,12 @@ const allUsers = () => { try { return JSON.parse(fs.readFileSync(process.env.ACC
 // ---------- account resolution for playback ----------
 const resolveAcct = (user, p) => {
   const own = getAcct(user, p); if (own) return { acct: own, owner: user };
-  if (user !== ADMIN && cfg.users[user]?.shareFromAdmin) { const a = getAcct(ADMIN, p); if (a) return { acct: a, owner: ADMIN }; }
+  if (user !== ADMIN && Object.hasOwn(cfg.users, user) && cfg.users[user].shareFromAdmin) { const a = getAcct(ADMIN, p); if (a) return { acct: a, owner: ADMIN }; }
   return null;
 };
 const urlCache = new Map(); // short cache so the loader's verify + replays don't hammer upstream
 async function playUrl(user, p, info, q) {
-  const uc = cfg.users[user]; if (!uc?.enabled) { const e = new Error('account source disabled by user'); e.code = 403; throw e; }
+  const uc = Object.hasOwn(cfg.users, user) ? cfg.users[user] : null; if (!uc?.enabled) { const e = new Error('account source disabled by user'); e.code = 403; throw e; }
   const r = resolveAcct(user, p); if (!r) { const e = new Error(`${p} not logged in`); e.code = 401; throw e; }
   const ck = `${r.owner}|${p}|${info.songmid || info.id || info.hash}|${q}`; const c = urlCache.get(ck);
   if (c && c.exp > Date.now()) return c.v;
@@ -218,47 +222,79 @@ async function playUrl(user, p, info, q) {
 
 // ---------- HTTP ----------
 const PAGE = fs.readFileSync(path.join(__dirname, 'login.html'));
-const J = (res, code, o) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(o)); };
-const body = (req) => new Promise((ok) => { let d = ''; req.on('data', c => { d += c; if (d.length > 4096) req.destroy(); }); req.on('end', () => { try { ok(JSON.parse(d || '{}')); } catch (e) { ok({}); } }); });
+const SEC = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'SAMEORIGIN' };
+const CSP = "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'; object-src 'none'";
+const J = (res, code, o) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...SEC, 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'" }); res.end(JSON.stringify(o)); };
+const TOO_BIG = Symbol('too big');
+const body = (req) => new Promise((ok) => { let d = '', done = false; const fin = (v) => { if (!done) { done = true; ok(v); } };
+  req.on('data', c => { if (done) return; d += c; if (d.length > 4096) { fin(TOO_BIG); req.removeAllListeners('data'); req.resume(); } });
+  req.on('end', () => { try { fin(JSON.parse(d || '{}')); } catch (e) { fin({}); } }); req.on('close', () => fin({})); req.on('error', () => fin({})); });
 const qrKeys = new Map(); // key -> {user, p, exp}: a user may only poll the QR they created
-const tokUser = () => { const m = {}; for (const [n, u] of Object.entries(cfg.users)) m[u.token] = n; return m; };
+// token -> user: strict format, constant-time compare, no object-key lookup
+const tokUser = (t) => {
+  if (typeof t !== 'string' || !/^[0-9a-f]{48}$/.test(t)) return null;
+  const a = Buffer.from(t); let hit = null;
+  for (const n of Object.keys(cfg.users)) { const tk = cfg.users[n] && cfg.users[n].token; if (typeof tk === 'string' && tk.length === 48 && crypto.timingSafeEqual(a, Buffer.from(tk)) && !hit) hit = n; }
+  return hit;
+};
+const qrLast = new Map(); // user|p -> ts: at most one QR per user per platform every 10 s
+const QR_IMG = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/;
 
 async function stateFor(me) {
   const uc = userCfg(me.name); const out = { user: me.display, admin: me.admin, enabled: uc.enabled, shareFromAdmin: !!uc.shareFromAdmin, platforms: {} };
   for (const p of Object.keys(P)) { const a = getAcct(me.name, p); const sh = !a && me.name !== ADMIN && uc.shareFromAdmin && getAcct(ADMIN, p); out.platforms[p] = { name: PNAME[p], loggedIn: !!a, nick: a?.nick || '', vip: !!a?.vip, since: a?.at || 0, sharedFromAdmin: !!sh }; }
-  if (me.admin) out.users = allUsers().filter(u => !u.admin).map(u => ({ name: u.name, display: u.display, share: !!cfg.users[u.name]?.shareFromAdmin }));
+  if (me.admin) out.users = allUsers().filter(u => !u.admin).map(u => ({ name: u.name, display: u.display, share: !!(Object.hasOwn(cfg.users, u.name) && cfg.users[u.name].shareFromAdmin) }));
   return out;
 }
 
-const server = http.createServer(async (req, res) => {
+// raw-URL routing: anything with a backslash (literal or %5c), encoded slash, dot segment or double slash is refused
+const badPath = (raw) => /\\|%5c|%2f|%2e|\/\.\.?(\/|$|\?)|\/\//i.test(String(raw).split('?')[0]);
+// ---- internal listener: called only by the LX script inside AL instances; nginx never proxies to this port ----
+const intServer = http.createServer(async (req, res) => {
   try {
-    reloadCfg(); const u = new URL(req.url, 'http://x');
-    // ---- internal: called only by the LX script inside AL instances (nginx never proxies /int/) ----
-    if (u.pathname === '/int/url') {
-      const user = tokUser()[req.headers['x-acc-token'] || ''];
+    reloadCfg();
+    if (badPath(req.url) || !String(req.url).startsWith('/int/url?') || req.method !== 'GET') return J(res, 404, { error: 'not found' });
+    const u = new URL(req.url, 'http://x');
+    {
+      const user = tokUser(req.headers['x-acc-token']);
       if (!user) return J(res, 403, { error: 'bad token' });
-      const p = u.searchParams.get('src'); if (!P[p]) return J(res, 400, { error: 'bad src' });
+      const p = u.searchParams.get('src'); if (!Object.hasOwn(P, p)) return J(res, 400, { error: 'bad src' });
       const info = { songmid: u.searchParams.get('id') || '', hash: u.searchParams.get('hash') || '', mediaMid: u.searchParams.get('mmid') || '', albumId: u.searchParams.get('aid') || '' };
       const q = u.searchParams.get('q') || '320k';
       try { const v = await playUrl(user, p, info, q); return J(res, 200, v); }
       catch (e) { return J(res, e.code || 404, { error: String(e.message || e).slice(0, 120) }); }
     }
+  } catch (e) {
+    console.error('[accsrc] int error:', String(e && e.message || e).slice(0, 200));
+    if (!res.headersSent) J(res, 500, { error: 'internal' });
+  }
+});
+
+const server = http.createServer(async (req, res) => {
+  try {
+    reloadCfg();
+    if (badPath(req.url)) return J(res, 400, { error: 'bad path' });
+    const u = new URL(req.url, 'http://x');
     if (u.pathname === '/healthz') return J(res, 200, { ok: true });
-    if (!u.pathname.startsWith('/al-login')) return J(res, 404, { error: 'not found' });
+    if (u.pathname !== '/al-login' && !u.pathname.startsWith('/al-login/')) return J(res, 404, { error: 'not found' });
     if (u.pathname === '/al-login' ) { res.writeHead(302, { Location: '/al-login/' }); return res.end(); }
     const me = await whoami(req);
     if (!me) return J(res, 401, { error: '未登录 Any Listen' });
-    if (u.pathname === '/al-login/' || u.pathname === '/al-login/index.html') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'SAMEORIGIN', 'Referrer-Policy': 'no-referrer' }); return res.end(PAGE); }
+    if (u.pathname === '/al-login/' || u.pathname === '/al-login/index.html') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', ...SEC, 'Content-Security-Policy': CSP }); return res.end(PAGE); }
     const api = /^\/al-login\/api\/(.+)$/.exec(u.pathname); if (!api) return J(res, 404, { error: 'not found' });
     const route = api[1];
     if (req.method !== 'GET' && req.headers['x-al'] !== '1') return J(res, 403, { error: 'csrf' });
     if (route === 'state') return J(res, 200, await stateFor(me));
-    if (route === 'enable' && req.method === 'POST') { const b = await body(req); userCfg(me.name).enabled = !!b.enabled; saveCfg(); return J(res, 200, await stateFor(me)); }
-    if (route === 'share' && req.method === 'POST') { if (!me.admin) return J(res, 403, { error: '仅管理员' }); const b = await body(req); if (!allUsers().some(x => x.name === b.user && !x.admin)) return J(res, 400, { error: 'bad user' }); userCfg(b.user).shareFromAdmin = !!b.share; saveCfg(); return J(res, 200, await stateFor(me)); }
+    const rb = async () => { const b = await body(req); if (b === TOO_BIG) { const e = new Error('too big'); e.code = 413; throw e; } return b; };
+    if (route === 'enable' && req.method === 'POST') { const b = await rb(); userCfg(me.name).enabled = !!b.enabled; saveCfg(); return J(res, 200, await stateFor(me)); }
+    if (route === 'share' && req.method === 'POST') { if (!me.admin) return J(res, 403, { error: '仅管理员' }); const b = await rb(); if (!allUsers().some(x => x.name === b.user && !x.admin)) return J(res, 400, { error: 'bad user' }); userCfg(b.user).shareFromAdmin = !!b.share; saveCfg(); return J(res, 200, await stateFor(me)); }
     const m = /^(wy|tx|kg)\/(qr|check|logout|refresh)$/.exec(route); if (!m) return J(res, 404, { error: 'not found' });
     const [, p, act] = m; userCfg(me.name);
-    if (act === 'qr' && req.method === 'POST') { const r = await P[p].qr(me.name); for (const [k, v] of qrKeys) if (v.exp < Date.now() || (v.user === me.name && v.p === p)) qrKeys.delete(k); qrKeys.set(r.key, { user: me.name, p, exp: Date.now() + 200e3 }); return J(res, 200, { key: r.key, img: r.img, link: /^https:\/\/(music\.163\.com|h5\.kugou\.com)\//.test(r.link || '') ? r.link : '', ttl: p === 'tx' ? 175 : 170 }); }
-    if (act === 'check') { const key = u.searchParams.get('key') || ''; const k = qrKeys.get(key); if (!k || k.user !== me.name || k.p !== p) return J(res, 200, { state: 'expired' }); const r = await P[p].check(me.name, key); if (r.state !== 'waiting' && r.state !== 'scanned') qrKeys.delete(key); return J(res, 200, r); }
+    if (act === 'qr' && req.method === 'POST') {
+      const lk = me.name + '|' + p, now = Date.now(); if (now - (qrLast.get(lk) || 0) < 10e3) return J(res, 429, { error: '操作太频繁，请 10 秒后再试' });
+      qrLast.set(lk, now); if (qrLast.size > 500) for (const [k, t] of qrLast) if (now - t > 60e3) qrLast.delete(k);
+      const r = await P[p].qr(me.name); if (!QR_IMG.test(String(r.img || ''))) return J(res, 502, { error: '二维码格式异常' }); for (const [k, v] of qrKeys) if (v.exp < Date.now() || (v.user === me.name && v.p === p)) qrKeys.delete(k); qrKeys.set(r.key, { user: me.name, p, exp: Date.now() + 200e3 }); return J(res, 200, { key: r.key, img: String(r.img), link: /^https:\/\/(music\.163\.com|h5\.kugou\.com)\//.test(r.link || '') ? r.link : '', ttl: p === 'tx' ? 175 : 170 }); }
+    if (act === 'check' && req.method === 'GET') { const key = u.searchParams.get('key') || ''; const k = qrKeys.get(key); if (!k || k.user !== me.name || k.p !== p || k.exp < Date.now()) { qrKeys.delete(key); return J(res, 200, { state: 'expired' }); } const r = await P[p].check(me.name, key); if (r.state !== 'waiting' && r.state !== 'scanned') qrKeys.delete(key); return J(res, 200, r); }
     if (act === 'logout' && req.method === 'POST') { const a = getAcct(me.name, p); if (p === 'tx' && a?.token) await qqGet('/logout', a.token).catch(() => {}); setAcct(me.name, p, null); for (const k of urlCache.keys()) if (k.startsWith(me.name + '|' + p + '|')) urlCache.delete(k); return J(res, 200, await stateFor(me)); }
     if (act === 'refresh' && req.method === 'POST') {
       const a = getAcct(me.name, p); if (!a) return J(res, 200, { ok: false, error: '未登录' });
@@ -268,8 +304,10 @@ const server = http.createServer(async (req, res) => {
     }
     return J(res, 405, { error: 'method' });
   } catch (e) {
+    if (e && e.code === 413) { if (!res.headersSent) J(res, 413, { error: 'too large' }); return; }
     console.error('[accsrc] handler error:', String(e && e.message || e).slice(0, 200));
     if (!res.headersSent) J(res, 500, { error: '服务内部错误' });
   }
 });
 server.listen(PORT, HOST, () => console.log(`[accsrc] listening ${HOST}:${PORT} (qq ${HOST}:${QQ_PORT})`));
+intServer.listen(INT_PORT, HOST, () => console.log(`[accsrc] internal /int/url on ${HOST}:${INT_PORT}`));
