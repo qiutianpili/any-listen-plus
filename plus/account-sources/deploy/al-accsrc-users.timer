@@ -1,0 +1,7 @@
+[Unit]
+Description=Periodically install the account-source script for new AL users
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+[Install]
+WantedBy=timers.target
