@@ -285,6 +285,9 @@ html.m-home-on #app-right .toolbar+*>:not(#m-home){visibility:hidden!important}
 #m-folia{position:fixed;inset:0;animation:m-folia-in .32s cubic-bezier(.2,.8,.2,1) both}
 @keyframes m-folia-in{from{opacity:0;transform:translateY(3%)}to{opacity:1;transform:none}}
 html.m-folia-on .play-detail{visibility:hidden!important}
+/* AL's lyric list keeps smooth-scrolling under Folia (setTimeout 10 ms + scrollTo); each step can block the main thread waiting for a
+   compositor commit while Folia's GPU-heavy modes (Monet) are rasterising → multi-second stalls. display:none makes those steps no-ops. (2026-10-14) */
+html.m-folia-on .play-detail .lyric{display:none!important}
 #m-folia-tog{position:absolute;top:.5rem;right:6.75rem;z-index:22;display:flex;padding:.15rem;border-radius:1rem;background:var(--color-primary-light-500-alpha-800,rgba(255,255,255,.5));font-size:.75rem;user-select:none}
 #m-folia-tog button{border:none;background:transparent;color:var(--color-font,#333);opacity:.65;padding:.2rem .65rem;border-radius:.85rem;cursor:pointer;font-size:inherit;line-height:1.3}
 #m-folia-tog button.on{opacity:1;background:var(--color-primary,#5b6ee1);color:#fff}
