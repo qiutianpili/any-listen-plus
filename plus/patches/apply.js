@@ -14,8 +14,14 @@ let bad = 0;
 for (const [name, p] of Object.entries(set)) {
   const file = path.join(root, where[name], name);
   if (!fs.existsSync(file)) { console.error('not found, skipped:', file); bad++; continue; }
-  const src = fs.readFileSync(file, 'utf8'), h = sha(src);
+  let src = fs.readFileSync(file, 'utf8'), h = sha(src), upgrade = false;
   if (h === p.sha256_patched) { console.log('already patched:', file); continue; }
+  if (h !== p.sha256_original && (p.sha256_previous || []).includes(h)) {
+    // patched by an older Plus release: re-patch from the .orig backup that run left behind
+    const o = fs.existsSync(file + '.orig') ? fs.readFileSync(file + '.orig', 'utf8') : '';
+    if (sha(o) !== p.sha256_original) { console.error('older Plus patch found but no matching .orig backup, skipped:', file); bad++; continue; }
+    src = o; h = sha(src); upgrade = true;
+  }
   if (h !== p.sha256_original) { console.error('unexpected version, skipped:', file); bad++; continue; }
   let out = '', cur = 0;
   for (const k of p.hunks) {
@@ -25,8 +31,8 @@ for (const [name, p] of Object.entries(set)) {
   }
   out += src.slice(cur);
   if (sha(out) !== p.sha256_patched) throw new Error('result mismatch for ' + file);
-  fs.copyFileSync(file, file + '.orig');
+  if (!upgrade) fs.copyFileSync(file, file + '.orig');
   fs.writeFileSync(file, out);
-  console.log('patched:', file, '(backup .orig)');
+  console.log(upgrade ? 'upgraded patch:' : 'patched:', file, '(backup .orig)');
 }
 process.exit(bad ? 2 : 0);
