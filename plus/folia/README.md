@@ -53,7 +53,7 @@
 
 ```bash
 cd plus/folia
-./build.sh          # 拉取 chthollyphile/folia-major @ 7701347918a4177c1c57b538d7556db9606be67a（v0.7.19），
+bash build.sh       # 拉取 chthollyphile/folia-major @ 7701347918a4177c1c57b538d7556db9606be67a（v0.7.19），
                     # 复制 src 到 folia-src/，应用 folia-src.patch，npm ci，vite build -> dist/
 ```
 
@@ -68,7 +68,7 @@ cd plus/folia
    cp plus/web/mobile.js plus/web/mobile.css /opt/any-listen-mobile/
    ```
    然后把 nginx 里 `mobile.js?v=` / `mobile.css?v=` 加 1 并 reload；有 CDN 时清一次缓存。
-3. 或使用 `deploy.sh`：`SSH_HOST=root@your-server NGINX_SITE=/etc/nginx/sites-enabled/your-domain ./deploy.sh <JSVER> <CSSVER>`。
+3. 或使用 `deploy.sh`：`SSH_HOST=root@your-server NGINX_SITE=/etc/nginx/sites-enabled/your-domain bash deploy.sh <JSVER> <CSSVER>`。
 
 更新 Folia 包后，可把 `mobile.js` 中的 `FV` 加 1，强制浏览器重新获取 `folia-player.js`。回滚见 [ROLLBACK.md](./ROLLBACK.md)。
 
