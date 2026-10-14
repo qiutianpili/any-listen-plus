@@ -30,7 +30,7 @@ import type { AlApi, AlSnapshot } from './api';
 
 const EMPTY_SPECTRUM = new Uint8Array(0);
 /** read by main.debug() for tests: lyric line count / active line / clock */
-export const debugState = { lines: 0, idx: -1, t: 0, text: '' };
+export const debugState = { lines: 0, idx: -1, t: 0, text: '', renders: 0, stalls: 0, fallback: '' };
 // three.js / pixi modes: loaded as separate chunks on demand, flagged in the picker
 const GPU_MODES = new Set<string>(['diorama', 'sonnet', 'tempera', 'lumiere', 'pendolo']);
 
@@ -104,6 +104,7 @@ const ProgressRow: React.FC<{ currentTime: MotionValue<number>; duration: number
 
 export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
     const { t } = useTranslation();
+    debugState.renders++;
     const phone = api.isPhone();
     const [snap, setSnap] = useState<AlSnapshot | null>(() => { try { return api.snapshot(); } catch { return null; } });
     const snapRef = useRef(snap); snapRef.current = snap;
@@ -191,7 +192,9 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
         return () => { cancelled = true; };
     }, [coverUrl]);
     const theme: Theme = isDaylight ? dual.light : dual.dark;
-    const { visualizerTheme, visualizerSubtitleTheme } = buildVisualizerTheme({
+    // memoised like Folia's own App: a fresh theme object on every render re-runs theme-keyed work in the
+    // visualizers and backgrounds (shader uniforms / sync WebGL renders, lyric layout caches)
+    const { visualizerTheme, visualizerSubtitleTheme } = useMemo(() => buildVisualizerTheme({
         appStyle: {},
         theme,
         lyricsFontStyle: typo.lyricsFontStyle ?? theme.fontStyle,
@@ -204,7 +207,8 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
         subtitleFontFamily: typo.subtitleFontFamily,
         subtitleFontFallbackFamilies: typo.subtitleFontFallbackFamilies,
         visualizerMode,
-    });
+    }), [theme, typo.lyricsFontStyle, typo.lyricsFontWeight, typo.lyricsCustomFont?.family, typo.lyricsFontFallbackFamilies, typo.subtitleFontInheritsLyrics,
+        typo.subtitleFontStyle, typo.subtitleFontWeight, typo.subtitleFontFamily, typo.subtitleFontFallbackFamilies, visualizerMode]);
 
     // no audio analyser in AL (audio may be cross-origin); spectrum-driven visuals take Folia's low-energy branch
     const audioPower = useMotionValue(0);
@@ -237,6 +241,38 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
         window.addEventListener('keydown', onKey, true);
         return () => window.removeEventListener('keydown', onKey, true);
     }, [api, panel]);
+
+    // --- stall watchdog: a 2 Hz heartbeat timer. Timers only run late when the main thread itself is blocked
+    // (a slow GPU only lowers the frame rate), so 3 beats >2.5 s late within 30 s in a non-classic mode means
+    // this device can't run that mode: fall back to classic and say so. Hidden tabs are ignored (timers throttle).
+    // Disable for testing with localStorage 'folia:al-watchdog' = '0'.
+    const [notice, setNotice] = useState<string | null>(null);
+    const modeRef = useRef(visualizerMode); modeRef.current = visualizerMode;
+    useEffect(() => {
+        let off = false; try { off = window.localStorage.getItem('folia:al-watchdog') === '0'; } catch { /* ignore */ }
+        if (off) return;
+        const STEP = 500; let last = performance.now(); let stalls: number[] = []; let lastMode = modeRef.current;
+        const reset = () => { last = performance.now(); stalls = []; };
+        const id = window.setInterval(() => {
+            const now = performance.now(); const late = now - last - STEP; last = now;
+            const m = modeRef.current;
+            if (m !== lastMode) { lastMode = m; stalls = []; return; }
+            if (document.hidden || m === 'classic' || late < 2500) return;
+            stalls = stalls.filter(t => now - t < 30000); stalls.push(now); debugState.stalls++;
+            if (stalls.length >= 3) {
+                stalls = [];
+                const label = getVisualizerModeLabel(m as VisualizerMode, t);
+                debugState.fallback = m;
+                console.warn(`[folia] "${m}" kept blocking the page (3 stalls > 2.5 s in 30 s) — switching to classic`);
+                useVisualizerSettingsStore.getState().handleSetVisualizerMode('classic' as VisualizerMode, { notify: false });
+                setNotice(`「${label}」在此设备上过于卡顿，已自动切回经典模式`);
+            }
+        }, STEP);
+        const vis = () => reset();
+        document.addEventListener('visibilitychange', vis);
+        return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', vis); };
+    }, [t]);
+    useEffect(() => { if (!notice) return; const id = window.setTimeout(() => setNotice(null), 7000); return () => window.clearTimeout(id); }, [notice]);
 
     const duration = snap?.duration || 0;
     const fg = theme.primaryColor;
@@ -306,7 +342,9 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
             onPointerMove={(e) => { if (e.pointerType === 'mouse') poke(); }}
             onPointerDown={(e) => { if (e.pointerType !== 'mouse') { if (chrome && !panel && (e.target as HTMLElement).closest?.('.fal-chrome') == null) { setChrome(false); } else poke(); } }}
         >
-            <div className="absolute inset-0">
+            {/* own stacking context: modes put z-10/z-20 full-screen layers (Monet's poster) that would otherwise
+                sit above our chrome and swallow every tap on close / settings / play */}
+            <div className="absolute inset-0" style={{ isolation: 'isolate' }}>
                 <PlayerBottomBarLayoutContext.Provider value={true}>
                 <VisualizerRenderer
                     mode={visualizerMode as VisualizerMode}
@@ -397,6 +435,11 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
                     <ProgressRow currentTime={currentTime} duration={duration} api={api} />
                 </div>
             </div>
+
+            {notice && (
+                <div className="fal-glass pointer-events-none absolute left-1/2 top-16 max-w-[90%] -translate-x-1/2 rounded-full px-4 py-2 text-center text-xs" role="status"
+                    style={{ marginTop: 'env(safe-area-inset-top)' }}>{notice}</div>
+            )}
 
             {/* settings sheet: Folia's own mode / background settings panels */}
             {panel && <div className="absolute inset-0" onPointerDown={(e) => { e.stopPropagation(); setPanel(false); }} style={{ background: 'rgba(0,0,0,.25)' }} />}
