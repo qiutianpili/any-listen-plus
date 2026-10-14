@@ -1,0 +1,5 @@
+[Unit]
+Description=Publish public AL user list for al-accsrc
+[Service]
+Type=oneshot
+ExecStart=/opt/al-accsrc/bin/al-accsrc-users.sh
