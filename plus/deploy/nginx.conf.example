@@ -1,31 +1,58 @@
 # music.example.com -> gateway (127.0.0.1:9400). Put it behind Cloudflare Tunnel + Access.
 map $http_upgrade $al_conn { default upgrade; '' close; }
+# real client IP: this vhost is reachable only from cloudflared on localhost, which sets CF-Connecting-IP
+map $http_cf_connecting_ip $al_client_ip { '' $remote_addr; default $http_cf_connecting_ip; }
+
+# catch-all: unknown Host / SNI (direct-IP scans) get no certificate and no answer
+server {
+    listen 80 default_server;
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_reject_handshake on;
+    return 444;
+}
+
 server {
     listen 443 ssl;
     server_name music.example.com;
     # ssl_certificate / ssl_certificate_key ...
     allow 127.0.0.1; allow ::1; deny all;   # only reachable through cloudflared
     client_max_body_size 200m;
+    # security headers; nginx does not inherit add_header into locations that set their own, so they are repeated there
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Content-Security-Policy "frame-ancestors 'self'" always;
+    add_header Referrer-Policy "same-origin" always;   # no Referer to the music CDNs
 
     # one-time browser cache clear, called once per browser by mobile.js (bump CLR there to run again)
     location = /__m/clear {
         add_header Clear-Site-Data '"cache"' always;
         add_header Cache-Control "no-store" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Content-Security-Policy "frame-ancestors 'self'" always;
+        add_header Referrer-Policy "same-origin" always;
         return 204;
     }
     # Plus front-end files (copy plus/web/* here)
     location ^~ /__m/ {
         alias /opt/any-listen-mobile/;
         add_header Cache-Control "no-cache";
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Content-Security-Policy "frame-ancestors 'self'" always;
+        add_header Referrer-Policy "same-origin" always;
     }
     # 账号音源登录页（plus/account-sources），al-accsrc 只监听 127.0.0.1
     location ^~ /al-login {
+        if ($request_uri ~* "^[^?]*(\\\\|%5c|%2f)") { return 400; }   # no backslashes / encoded slashes
         proxy_pass http://127.0.0.1:9410;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $al_client_ip;
         proxy_read_timeout 60s;
         add_header Cache-Control "no-store" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Content-Security-Policy "frame-ancestors 'self'" always;
+        add_header Referrer-Policy "same-origin" always;
     }
     # the patched bundle must not be cached as immutable
     location = /indexBzjGy48v.js {
@@ -34,6 +61,9 @@ server {
         proxy_hide_header Cache-Control;
         proxy_hide_header Expires;
         add_header Cache-Control "no-cache";
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Content-Security-Policy "frame-ancestors 'self'" always;
+        add_header Referrer-Policy "same-origin" always;
     }
     location / {
         proxy_set_header Accept-Encoding "";
@@ -45,8 +75,8 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $al_conn;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $al_client_ip;
+        proxy_set_header X-Forwarded-For $al_client_ip;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 3600s;
         proxy_buffering off;
