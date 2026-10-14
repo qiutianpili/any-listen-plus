@@ -1,0 +1,27 @@
+[Unit]
+Description=Any Listen account sources (NetEase/QQ/KuGou QR login + URL glue), localhost only
+After=network-online.target
+[Service]
+User=alaccsrc
+Group=alaccsrc
+WorkingDirectory=/opt/al-accsrc/app
+EnvironmentFile=/opt/al-accsrc/env
+Environment=NODE_ENV=production
+Environment=TMPDIR=/opt/al-accsrc/tmp
+Environment=LOG_LEVEL=warn
+Environment=ACC_BASE=/opt/al-accsrc
+Environment=ACC_STATE=/opt/al-accsrc/state
+Environment=ACC_USERS_JSON=/opt/al-accsrc/users.pub.json
+ExecStart=/opt/node22/bin/node --max-old-space-size=160 server.js
+Restart=on-failure
+RestartSec=5
+MemoryMax=260M
+MemoryHigh=220M
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/al-accsrc/state /opt/al-accsrc/tmp
+ReadOnlyPaths=/opt/al-accsrc/users.pub.json
+ProtectHome=true
+PrivateTmp=true
+[Install]
+WantedBy=multi-user.target
