@@ -1,0 +1,26 @@
+--- a/components/visualizer/backgrounds/nomand/entry.tsx
++++ b/components/visualizer/backgrounds/nomand/entry.tsx
+@@ -1,7 +1,9 @@
+ import React from 'react';
+ import { Layers } from 'lucide-react';
+ import { DEFAULT_NOMAND_BACKGROUND_TUNING } from '../../../../types';
+-import NomandBackgroundLayer from './NomandBackgroundLayer';
++// folia-al: renderer split into its own chunk (WebGL deps only load when this background is picked)
++const NomandBackgroundLayerLazy = React.lazy(() => import('./NomandBackgroundLayer'));
++const NomandBackgroundLayer = (props: any) => <React.Suspense fallback={null}><NomandBackgroundLayerLazy {...props} /></React.Suspense>;
+ import NomandBackgroundSettingsCard from './NomandBackgroundSettingsCard';
+ import { defineVisualizerBackground } from '../definition';
+ import { QuickControlToggle } from '../../../shared/QuickControlChip';
+--- a/components/visualizer/backgrounds/sora/entry.tsx
++++ b/components/visualizer/backgrounds/sora/entry.tsx
+@@ -1,7 +1,9 @@
+ import React from 'react';
+ import { Square } from 'lucide-react';
+ import { DEFAULT_SORA_BACKGROUND_TUNING } from '../../../../types';
+-import SoraBackground from './SoraBackground';
++// folia-al: renderer split into its own chunk (WebGL deps only load when this background is picked)
++const SoraBackgroundLazy = React.lazy(() => import('./SoraBackground'));
++const SoraBackground = (props: any) => <React.Suspense fallback={null}><SoraBackgroundLazy {...props} /></React.Suspense>;
+ import SoraBackgroundSettingsCard from './SoraBackgroundSettingsCard';
+ import { defineVisualizerBackground } from '../definition';
+ import { QuickControlToggle } from '../../../shared/QuickControlChip';
