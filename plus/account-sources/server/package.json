@@ -1,0 +1,13 @@
+{
+  "name": "al-accsrc",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Account-based music sources (NetEase / QQ / KuGou QR login) for Any Listen",
+  "main": "server.js",
+  "dependencies": {
+    "@neteasecloudmusicapienhanced/api": "4.40.1",
+    "@yakult-green-tea/qq-music-api": "3.1.4",
+    "kugoumusicapi": "https://github.com/MakcRe/KuGouMusicApi/archive/refs/tags/v1.6.0.tar.gz",
+    "qrcode": "^1.5.4"
+  }
+}
