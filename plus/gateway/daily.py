@@ -15,16 +15,21 @@ BAD = re.compile(r'伴奏|inst(rumental)?\b|karaoke|铃声|片段|dj版|\bdj\b|�
 
 def log(*a): sys.stderr.write(' '.join(str(x) for x in a) + '\n')
 
+# on-demand runs (--active, started by the gateway while the user waits) get fewer/shorter retries and a hard
+# overall budget so the gateway's 180 s kill never lands mid-run (2026-10-19)
+ACTIVE = '--active' in sys.argv; DEADLINE = time.time() + (120 if ACTIVE else 10 ** 9)
 def qq(module, method, param):
+    if time.time() > DEADLINE: return None
     body = json.dumps({'comm': {'ct': 24, 'cv': 0}, 'req': {'module': module, 'method': method, 'param': param}}).encode()
-    for i in range(3):
+    for i in range(2 if ACTIVE else 3):
+        if time.time() > DEADLINE: return None
         try:
-            with urllib.request.urlopen(urllib.request.Request('https://u.y.qq.com/cgi-bin/musicu.fcg', body, H), timeout=12) as r:
+            with urllib.request.urlopen(urllib.request.Request('https://u.y.qq.com/cgi-bin/musicu.fcg', body, H), timeout=8 if ACTIVE else 12) as r:
                 d = json.loads(r.read())
             if d.get('code') == 0 and (d.get('req') or {}).get('code') == 0: return d['req'].get('data') or {}
         except Exception as e:
             log('qq err', method, e)
-        time.sleep(2 + 2 * i)
+        time.sleep(1 if ACTIVE else 2 + 2 * i)
     return None
 
 def norm(s):
