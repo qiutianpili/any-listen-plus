@@ -1,0 +1,2 @@
+al-gw ALL=(root) NOPASSWD: /usr/bin/node /opt/al-gateway-root/helper.js *
+Defaults:al-gw !requiretty
