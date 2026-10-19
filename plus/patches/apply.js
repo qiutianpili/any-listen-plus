@@ -6,6 +6,8 @@ const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const root = process.argv[2];
 if (!root) { console.error('usage: node apply.js <any-listen dir>'); process.exit(1); }
 const where = { 'indexBzjGy48v.js': 'public', 'app.js': 'server', 'extension-service.worker.js': 'server',
+  // media proxy: blocks loopback/private/metadata targets on every hop (SSRF), proxyAllResources defaults off
+  'index.js': 'server', 'preload-helper.js': 'server',
   // music-source loader extension (install it from the app first): hedged source race + parallel source init
   'lx-api-source-loader_0.1.7/main.js': 'data/app/extension/ext' };
 const set = JSON.parse(fs.readFileSync(path.join(__dirname, 'v0.11.0.json'), 'utf8'));
