@@ -2,4 +2,4 @@
 Description=Any Listen 每日推荐 generator
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /opt/al-gateway/daily.py
+ExecStart=/usr/bin/python3 /opt/al-gateway-root/daily.py
