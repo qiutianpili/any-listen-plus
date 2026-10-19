@@ -28,6 +28,7 @@ import { PlayerBottomBarLayoutContext } from '../folia-src/components/floating-p
 import { playerBottomBarLiveOffset } from '../folia-src/stores/motionSignals';
 import type { AlApi, AlSnapshot } from './api';
 import { PlayModeButton, QueuePanel, QueueIcon } from './Queue';
+import { useRandomVisualizerMode, useRandomPoolStore, setRandomEnabled, pickModeByHand, ALL_MODES } from './random';
 
 const EMPTY_SPECTRUM = new Uint8Array(0);
 /** read by main.debug() for tests: lyric line count / active line / clock */
@@ -232,6 +233,7 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
     // --- chrome visibility ---
     const [chrome, setChrome] = useState(true);
     const [panel, setPanel] = useState(false);
+    const [tab, setTab] = useState<'style' | 'random' | 'bg' | 'show'>('style');
     const [queueOpen, setQueueOpen] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
     const toastTimer = useRef<number | undefined>(undefined);
@@ -320,6 +322,10 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
         sora: { onTuningChange: vs.handleSetSoraBackgroundTuning, onResetTuning: vs.handleResetSoraBackgroundTuning },
         url: { onAdd: vs.handleAddUrlBackgroundItem, onUpdate: vs.handleUpdateUrlBackgroundItem, onDelete: vs.handleDeleteUrlBackgroundItem, onSelect: vs.handleSetUrlBackgroundSelectedId },
     };
+    useRandomVisualizerMode(snap?.id ?? null);
+    const randomOn = useVisualizerSettingsStore(s => s.randomVisualizerModePerSong);
+    const pool = useRandomPoolStore();
+    const [poolTip, setPoolTip] = useState('');
     const entry = getVisualizerRegistryEntry(visualizerMode);
     const bgMode = backgroundConfig.mode ?? DEFAULT_VISUALIZER_BACKGROUND_MODE;
     const bgEntry = getVisualizerBackgroundRegistryEntry(bgMode);
@@ -504,14 +510,23 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
                         <div className="text-base font-semibold">Folia 视觉设置</div>
                         <button type="button" className="fal-btn h-9 w-9" aria-label="关闭" onClick={() => setPanel(false)}><X size={18} /></button>
                     </div>
+                    <div className="fal-tabs flex shrink-0 gap-1 px-4 pb-3" role="tablist">
+                        {([['style', '歌词样式'], ['random', '随机'], ['bg', '背景'], ['show', '显示']] as const).map(([k, l]) => (
+                            <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+                                className="fal-btn flex-1 rounded-full px-2 py-1.5 text-xs"
+                                style={tab === k ? { backgroundColor: colorWithAlpha(fg, 0.2), fontWeight: 600 } : { opacity: 0.7 }}>{l}</button>
+                        ))}
+                    </div>
                     <div className="fal-sheet-scroll visualizer-overlay-scrollbar flex-1 space-y-4 overflow-y-auto px-4 pb-5">
+                        {tab === 'style' && <>
+                        {randomOn && <div className="rounded-[18px] px-4 py-2 text-xs opacity-75" style={{ backgroundColor: controlCardBg }}>随机样式已开启：每首歌从随机池里换一种。在这里手动选一种样式会关闭随机。</div>}
                         <div className="space-y-4 rounded-[24px] border border-white/10 p-4" style={{ backgroundColor: controlCardBg }}>
                             <div className="flex items-center justify-between">
                                 <div className="text-sm font-medium">{tr('options.visualizerMode', '歌词视觉')}</div>
                                 {entry.resetSettings && <button type="button" className="fal-btn gap-1 px-2 py-1 text-xs opacity-70" onClick={resetMode}><RotateCcw size={12} />{tr('ui.default', '默认')}</button>}
                             </div>
                             <VisualizerPresetGroup label="" value={visualizerMode} options={modeOptions}
-                                onChange={(m) => vs.handleSetVisualizerMode(m as VisualizerMode, { notify: false })} isDaylight={isDaylight} theme={theme} />
+                                onChange={(m) => pickModeByHand(m as VisualizerMode)} isDaylight={isDaylight} theme={theme} />
                             <div className="text-[11px] opacity-50">标 ·GPU 的模式使用 WebGL（three.js / Pixi），首次切换时单独加载，手机上更耗电。</div>
                         </div>
                         {entry.renderSettingsPanel?.({
@@ -541,12 +556,57 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
                             temperaTuning: vs.temperaTuning, onTemperaTuningChange: vs.handleSetTemperaTuning,
                             lumiereTuning: vs.lumiereTuning, onLumiereTuningChange: vs.handleSetLumiereTuning,
                         })}
+                        </>}
+                        {tab === 'random' && <>
+                        <div className="space-y-4 rounded-[24px] border border-white/10 p-4" style={{ backgroundColor: controlCardBg }}>
+                            <Toggle theme={theme} label="每首歌随机换样式" desc="每首歌从选中的样式里换一种，各样式用自己保存的参数。" value={randomOn} onChange={setRandomEnabled} />
+                        </div>
+                        <div className="space-y-3 rounded-[24px] border border-white/10 p-4" style={{ backgroundColor: controlCardBg }}>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="text-sm font-medium">随机池</div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs opacity-60">已选 {pool.modes.length}/{modeOptions.length}</span>
+                                    <button type="button" className="fal-btn px-2 py-1 text-xs" disabled={pool.modes.length === modeOptions.length}
+                                        style={{ opacity: pool.modes.length === modeOptions.length ? 0.4 : 0.85 }} onClick={() => pool.setModes(ALL_MODES())}>全选</button>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                {modeOptions.map(o => {
+                                    const on = pool.modes.includes(o.value as VisualizerMode);
+                                    const cur = o.value === visualizerMode;
+                                    return (
+                                        <button key={o.value} type="button" role="checkbox" aria-checked={on}
+                                            className="flex items-center gap-2 rounded-[14px] px-3 py-2 text-left text-xs transition-colors"
+                                            style={{ backgroundColor: on ? colorWithAlpha(theme.accentColor, 0.28) : 'rgba(255,255,255,.06)', border: `1px solid ${on ? colorWithAlpha(theme.accentColor, 0.6) : 'rgba(255,255,255,.08)'}` }}
+                                            onClick={() => {
+                                                if (on && pool.modes.length <= 1) { setPoolTip('至少选择一种样式'); window.setTimeout(() => setPoolTip(''), 1600); return; }
+                                                pool.setModes(on ? pool.modes.filter(m => m !== o.value) : [...pool.modes, o.value as VisualizerMode]);
+                                            }}>
+                                            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] text-[10px]" style={{ backgroundColor: on ? theme.accentColor : 'transparent', border: on ? 'none' : '1.5px solid rgba(255,255,255,.4)', color: '#fff' }}>{on ? '✓' : ''}</span>
+                                            <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                                            {cur && <span className="shrink-0 text-[10px] opacity-60">当前</span>}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {poolTip && <div className="text-xs" style={{ color: theme.accentColor }}>{poolTip}</div>}
+                            {randomOn && pool.modes.some(m => m !== visualizerMode) && (
+                                <button type="button" className="fal-btn w-full rounded-full py-2 text-xs" style={{ backgroundColor: 'rgba(255,255,255,.08)' }}
+                                    onClick={() => { const opts = pool.modes.filter(m => m !== visualizerMode); const n = opts[Math.floor(Math.random() * opts.length)]; if (n) vs.handleSetVisualizerMode(n, { notify: false }); }}>
+                                    从随机池里换一种
+                                </button>
+                            )}
+                        </div>
+                        </>}
+                        {tab === 'bg' && <>
                         <div className="space-y-4 rounded-[24px] border border-white/10 p-4" style={{ backgroundColor: controlCardBg }}>
                             <div className="text-sm font-medium">{tr('options.visualizerBackgroundMode', '背景')}</div>
                             <VisualizerPresetGroup label="" value={bgMode} options={bgOptions}
                                 onChange={(m) => vs.handleSetVisualizerBackgroundMode(m)} isDaylight={isDaylight} theme={theme} />
                         </div>
                         {bgEntry.renderSettingsPanel?.({ config: backgroundConfig, actions: backgroundActions, t, isDaylight, theme, controlCardBg, rangeInputClass })}
+                        </>}
+                        {tab === 'show' && <>
                         <div className="space-y-4 rounded-[24px] border border-white/10 p-4" style={{ backgroundColor: controlCardBg }}>
                             <div className="text-sm font-medium">显示</div>
                             <Toggle theme={theme} label="显示翻译 / 罗马音字幕" value={typo.showSubtitleTranslation} onChange={typo.handleToggleShowSubtitleTranslation} />
@@ -558,8 +618,9 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
                                     onChange={(e) => typo.handleSetLyricsFontScale(Number(e.target.value))} />
                             </div>
                         </div>
+                        </>}
                         <div className="px-1 text-[11px] leading-relaxed opacity-45">
-                            歌词视觉来自 Folia Major v0.7.19（chthollyphile，AGPL-3.0）。设置只保存在本浏览器。点右上角「原版」可切回 Any Listen 原版详情页。
+                            歌词视觉来自 Folia Major v0.7.19 + 上游 v0.7.21 随机歌词样式、字体栈修复（chthollyphile，AGPL-3.0）。设置只保存在本浏览器。点右上角「原版」可切回 Any Listen 原版详情页。
                         </div>
                     </div>
                 </div>
