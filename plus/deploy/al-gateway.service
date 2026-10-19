@@ -2,13 +2,17 @@
 Description=Any Listen Plus gateway (Cloudflare Access -> per-user instances)
 After=network-online.target
 [Service]
+# unprivileged: root work (create/remove players, start/stop units, 每日推荐) goes through
+# /opt/al-gateway-root/helper.js via sudo (deploy/sudoers.al-gw)
+User=al-gw
+Group=al-gw
+UMask=0077
 WorkingDirectory=/opt/al-gateway
-ExecStart=/usr/bin/node gw.js
+ExecStart=/usr/bin/node /opt/al-gateway-root/gw.js
 Restart=always
 RestartSec=3
 MemoryMax=80M
-# runs as root: it creates/removes the per-player system users (al-<id>) and starts/stops their units
-PrivateTmp=true
 ProtectHome=true
+PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
