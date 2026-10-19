@@ -73,15 +73,19 @@
    不部署这一步也可以，详情页会自动使用原版。
 4. 网关：
    ```bash
-   mkdir -p /opt/al-gateway /opt/al-users
-   cp plus/gateway/gw.js /opt/al-gateway/
+   useradd --system --no-create-home --home-dir /opt/al-gateway --shell /usr/sbin/nologin --user-group al-gw
+   mkdir -p /opt/al-gateway /opt/al-gateway-root /opt/al-users
+   install -m 755 plus/gateway/helper.js /opt/al-gateway-root/   # 代码目录归 root，网关用户不可写
+   install -m 644 plus/gateway/gw.js plus/gateway/daily.py /opt/al-gateway-root/
    cp plus/gateway/config.example.json /opt/al-gateway/config.json   # 填 Access 团队域名、AUD、管理员邮箱
    cp plus/gateway/users.example.json /opt/al-gateway/users.json     # 填管理员实例的 Any Listen 密码
-   cp plus/deploy/*.service /etc/systemd/system/ && systemctl daemon-reload
+   mkdir -p /opt/al-gateway/daily && chown -R al-gw:al-gw /opt/al-gateway && chown root:root /opt/al-gateway/daily && chmod 755 /opt/al-gateway/daily
+   install -m 440 plus/deploy/sudoers.al-gw /etc/sudoers.d/al-gw && visudo -cf /etc/sudoers.d/al-gw
+   cp plus/deploy/*.service plus/deploy/*.timer /etc/systemd/system/ && systemctl daemon-reload
    systemctl enable --now al-gateway
-   cp plus/gateway/daily.py /opt/al-gateway/
    systemctl enable --now al-daily.timer   # 每日推荐
    ```
+   网关以低权限用户 `al-gw` 运行，需要 root 的操作（建/删播放器、启停服务、每日推荐）只能通过 `helper.js` 的固定命令完成；`node` 可执行文件须归 root 所有。
    管理员实例监听 9500（原 `any-listen` 服务），其他用户实例从 9501 起，由网关自动创建 `any-listen-u@<id>` 服务。
 5. Cloudflare：用 Tunnel 把域名指向本机 nginx，并建一个 Access 应用，在策略里放行要使用的邮箱（可开启邮箱验证码、Google、GitHub 登录）。网关只信任 Access 签发的 JWT。
 
