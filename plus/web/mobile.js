@@ -1,3 +1,37 @@
+/* WebView compat (2026-10-18): Android WebView lacks navigator.mediaSession / MediaMetadata / setSinkId → AL player init threw. In the Android app, QQ stream URLs 403 from the phone's network → fetch them through the server (/__m/qqa/). */
+(function(){
+  try{
+    if(!('mediaSession' in navigator)||!navigator.mediaSession){
+      var ms={metadata:null,playbackState:'none',setActionHandler:function(){},setPositionState:function(){},setMicrophoneActive:function(){},setCameraActive:function(){}};
+      try{Object.defineProperty(navigator,'mediaSession',{value:ms,configurable:true})}catch(e){}
+    }
+    if(typeof window.MediaMetadata!=='function'){window.MediaMetadata=function(o){o=o||{};this.title=o.title||'';this.artist=o.artist||'';this.album=o.album||'';this.artwork=o.artwork||[]}}
+    var HP=window.HTMLMediaElement&&HTMLMediaElement.prototype;
+    if(HP&&typeof HP.setSinkId!=='function'){HP.setSinkId=function(){return Promise.resolve()};try{Object.defineProperty(HP,'sinkId',{get:function(){return ''},configurable:true})}catch(e){}}
+    if(HP&&/AnyListenApp\//.test(navigator.userAgent)){
+      var re=/^https?:\/\/ws\.stream\.qqmusic\.qq\.com\/(M[0-9A-Za-z]+\.(?:mp3|m4a|flac|ogg))(\?.*)?$/;
+      var fix=function(u){var m=typeof u==='string'&&re.exec(u);return m?location.origin+'/__m/qqa/'+m[1]+(m[2]||''):u};
+      var d=Object.getOwnPropertyDescriptor(HP,'src');
+      if(d&&d.set){Object.defineProperty(HP,'src',{configurable:true,enumerable:d.enumerable,get:d.get,set:function(v){return d.set.call(this,fix(v))}})}
+      var sa=Element.prototype.setAttribute;
+      Element.prototype.setAttribute=function(n,v){if(this instanceof HTMLMediaElement&&String(n).toLowerCase()==='src')v=fix(v);return sa.call(this,n,v)};
+    }
+  }catch(e){}
+})();
+/* boot splash (2026-10-18): animated cover over the blank/"Loading..." boot phase; removed once the app shell (#app-main) or a password form shows */
+(function(){
+  if(window.self!==window.top)return;var pn=location.pathname;if(pn!=='/'&&pn!=='/index.html')return;
+  var d=document.createElement('div');d.id='m-splash';d.setAttribute('aria-hidden','true');
+  d.innerHTML='<div class="m-sp-in"><div class="m-sp-logo"><img src="/__m/256x256.png" alt="" decoding="async"></div><div class="m-sp-eq"><i></i><i></i><i></i><i></i><i></i></div><div class="m-sp-t">Any Listen</div><div class="m-sp-tip">如长时间未响应，请<a href="" class="m-sp-rl">再次刷新此页面</a></div></div>';
+  document.documentElement.appendChild(d);document.documentElement.classList.add('m-booting');
+  /* refresh link (2026-10-19): rapid repeated taps count once — first tap reloads, further taps are ignored until the reload has had 8s */
+  var rl=d.querySelector('.m-sp-rl'),rlT=0,rlTx=rl.textContent;
+  rl.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var n=Date.now();if(n-rlT<8000)return;rlT=n;rl.textContent='正在刷新…';rl.classList.add('busy');
+    setTimeout(function(){rl.textContent=rlTx;rl.classList.remove('busy')},8000);location.reload()});
+  var t0=Date.now(),iv=0;
+  function done(){if(!iv)return;clearInterval(iv);iv=0;document.documentElement.classList.remove('m-booting');d.classList.add('out');setTimeout(function(){d.remove()},500)}
+  iv=setInterval(function(){var pw=document.querySelector('#root input[type=password]');if(document.getElementById('app-main')||(pw&&pw.offsetParent!==null&&Date.now()-t0>2500)||Date.now()-t0>60000)done();if(Date.now()-t0>4000)d.classList.add('slow')},80);
+})();
 /* lighter sound effects for phones: bigger audio buffers + shorter reverb tail (2026-10-09) */
 (function(){
   var C=window.AudioContext||window.webkitAudioContext;if(!C)return;
@@ -14,7 +48,7 @@
     d.set.call(this,b)}});
 })();
 /* one-time browser cache clear (2026-10-12): bump CLR to clear this site's HTTP cache once per browser (nginx /__m/clear sends Clear-Site-Data: "cache") */
-(function(){var CLR='1';try{if(localStorage.getItem('al-clr')===CLR)return;localStorage.setItem('al-clr',CLR);sessionStorage.removeItem('al-direct-bad');
+(function(){var CLR='2';try{if(/AnyListenApp\//.test(navigator.userAgent))return;/* app: never wipe its HTTP cache (2026-10-18) */if(localStorage.getItem('al-clr')===CLR)return;localStorage.setItem('al-clr',CLR);sessionStorage.removeItem('al-direct-bad');
   if(window.caches&&caches.keys)caches.keys().then(function(k){k.forEach(function(n){caches.delete(n)})}).catch(function(){});
   setTimeout(function(){fetch('/__m/clear',{cache:'no-store',credentials:'same-origin'}).catch(function(){})},8000)}catch(e){}})();
 /* shared, frame-throttled DOM observer (perf 2026-10-09) */
@@ -600,19 +634,24 @@
    Overlay inside #app-right's view area, so the native router/state is untouched; any navigation closes it. */
 (function(){
   if(/^\/__gw\//.test(location.pathname))return;
-  var HOME='M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z',on=false,opened=false,gen=0,drawnN=-1;
+  var HOME='M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z',prevHash=null,on=false,opened=false,gen=0,drawnN=-1;
   function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
   function view(){var r=document.getElementById('app-right');if(!r)return null;var tb=r.querySelector('.toolbar');var v=tb&&tb.nextElementSibling;return v||null}
   function nav(){
     var a=document.querySelector('#app-main .aside');if(!a)return;var ul=a.querySelector('.aside-nav');if(!ul||document.getElementById('m-home-nav'))return;
     var h=[].filter.call(ul.classList,function(c){return c.indexOf('svelte-')===0})[0]||'';
     var li=document.createElement('li');li.className='nav-item '+h;li.setAttribute('role','presentation');
-    li.innerHTML='<a id="m-home-nav" role="tab" data-ignore-tip="" class="link '+h+'" href="#" aria-label="主页"><div class="left '+h+'"><div class="icon '+h+'"><svg class="'+h+'" viewBox="0 0 24 24" fill="currentColor"><path d="'+HOME+'"/></svg></div> <span class="nav-name '+h+'">主页</span></div></a>';
+    li.innerHTML='<a id="m-home-nav" role="tab" data-ignore-tip="" class="link '+h+'" href="#/home" aria-label="主页"><div class="left '+h+'"><div class="icon '+h+'"><svg class="'+h+'" viewBox="0 0 24 24" fill="currentColor"><path d="'+HOME+'"/></svg></div> <span class="nav-name '+h+'">主页</span></div></a>';
     ul.insertBefore(li,ul.firstChild);
     li.firstChild.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();document.documentElement.classList.remove('m-aside-open');show()});
     if(on)li.firstChild.classList.add('m-active');
   }
-  function hide(){if(!on)return;on=false;closeEd();gen++;var b=document.getElementById('m-home');if(b)b.remove();document.documentElement.classList.remove('m-home-on');var n=document.getElementById('m-home-nav');if(n)n.classList.remove('m-active')}
+  /* AL's router has no /home route: its catch-all replaceState()s #/home to the last list. While 主页 is shown keep #/home in the URL and remember that route instead. */
+  var _rs=history.replaceState,rehome=0;
+  history.replaceState=function(st,t,u){var r=_rs.apply(history,arguments);try{if(on&&u!=null){var x=String(u),k=x.indexOf('#'),h=k>=0?x.slice(k):'';if(h&&h!=='#/home'){prevHash=h;rehome++;setTimeout(function(){rehome--;if(on&&location.hash===h)_rs.call(history,history.state,'','#/home')},0)}}}catch(e){}return r};
+  window.addEventListener('popstate',function(){if(location.hash==='#/home'&&!on)show()});
+  function restore(){if(!on&&location.hash==='#/home'&&prevHash!=null){try{history.replaceState(history.state,'',prevHash||location.pathname+location.search)}catch(e){}}}
+  function hide(nav){if(!on)return;on=false;if(nav)setTimeout(restore,400);else restore();closeEd();gen++;var b=document.getElementById('m-home');if(b)b.remove();document.documentElement.classList.remove('m-home-on');var n=document.getElementById('m-home-nav');if(n)n.classList.remove('m-active')}
   function fmtTime(ts){try{return new Date(ts).toLocaleString('zh-CN',{hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}catch(e){return ''}}
   function noticeCard(box,n){
     var c=el('div','m-home-card m-home-notice');var hd=el('div','m-home-nh');
@@ -683,13 +722,14 @@
       eb.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();editCover(eb,cv,l)});wrapC.appendChild(eb)}
     c.appendChild(wrapC);
     c.appendChild(el('div','m-home-ln',l.name));var meta=el('div','m-home-lm',l.type==='remote'?'收藏的在线歌单':(love?'我喜欢的歌曲':(l.name==='每日推荐'&&l.type==='general'?'每天自动更新':'自建歌单')));c.appendChild(meta);
-    c.addEventListener('click',function(){closeEd();hide();setTimeout(function(){fromHome=location.hash},400)});
+    c.addEventListener('click',function(){closeEd();hide(true);setTimeout(function(){fromHome=location.hash},400)});
     grid.appendChild(c);
     var g=gen;try{Promise.resolve(window.__alLib.musics(l.id)).then(function(ms){if(g!==gen||!ms)return;meta.textContent=ms.length+' 首 · '+meta.textContent}).catch(function(){})}catch(e){}
   }
   function show(){
     var v=view();if(!v){setTimeout(show,300);return}
-    hide();on=true;opened=true;drawnN=-1;var g=++gen;document.documentElement.classList.add('m-home-on');
+    var boot=!opened;hide(true);on=true;opened=true;drawnN=-1;
+    if(location.hash!=='#/home'){prevHash=location.hash;try{history[boot?'replaceState':'pushState'](history.state,'','#/home')}catch(e){}}else if(prevHash==null)prevHash='';var g=++gen;document.documentElement.classList.add('m-home-on');
     var n=document.getElementById('m-home-nav');if(n)n.classList.add('m-active');
     var b=el('div');b.id='m-home';var wrap=el('div','m-home-wrap');b.appendChild(wrap);
     wrap.appendChild(el('h2','m-home-h','主页'));
@@ -717,8 +757,8 @@
   }
   /* the app redirects to its last list right after boot: ignore route changes the user did not cause during the first seconds */
   var autoAt=0,act=0;['pointerdown','keydown','touchstart'].forEach(function(t){document.addEventListener(t,function(){act=Date.now()},true)});
-  window.addEventListener('hashchange',function(){if(Date.now()-autoAt<6000&&Date.now()-act>1500)return;hide()});
-  document.addEventListener('click',function(e){if(!on)return;var a=e.target.closest&&e.target.closest('#app-main .aside a, #app-main .aside .my-list-container .container');if(a&&a.id!=='m-home-nav')hide()},true);
+  window.addEventListener('hashchange',function(){if(location.hash==='#/home'){if(!on)show();return}if(on&&rehome>0)return;if(Date.now()-autoAt<6000&&Date.now()-act>1500){if(on){prevHash=location.hash;try{history.replaceState(history.state,'','#/home')}catch(e){}}return}hide()});
+  document.addEventListener('click',function(e){if(!on)return;var a=e.target.closest&&e.target.closest('#app-main .aside a, #app-main .aside .my-list-container .container');if(a&&a.id!=='m-home-nav')hide(true)},true);
   window.__alObs(function(){nav();if(on&&!document.getElementById('m-home'))show();
     /* user lists can load after 主页 rendered (or a list was added/removed): redraw when the count changes */
     if(on&&drawnN>=0&&window.__alLib&&window.__alLib.ul&&window.__alLib.ul().filter(function(l){return l.type}).length!==drawnN&&!document.getElementById('m-home-ed'))show();
@@ -749,11 +789,16 @@
     fetch('/__gw/daily',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){
       if(!j){busy=false;return}
       if(j.pending){busy=false;if(++tries<=6)setTimeout(sync,40000);return}
-      if(j.date===doneDate||!j.list||!j.list.length){busy=false;return}
-      var L=window.__alLib,now=Date.now(),l=find(),created=false,p;
-      if(l)p=Promise.resolve(l.id);
+      var L=window.__alLib,now=Date.now(),keep=null,extra=[],created=false,p;
+      /* 2026-10-19: the gateway reads the user's DB for existing 每日推荐 ids (j.ids), so a late-loading local list state can no longer
+         cause a second list, and extras (two devices at the same moment) are removed; local state is only the fallback */
+      if(Array.isArray(j.ids)){keep=j.ids[0]||null;extra=j.ids.slice(1)}
+      else{var mine=window.__alLib.ul().filter(function(l){return l.name===NAME&&l.type==='general'});keep=mine[0]?mine[0].id:null;extra=mine.slice(1).map(function(l){return l.id})}
+      var rm=extra.length?Promise.resolve(L.act({action:'list_remove',data:extra})).catch(function(e){console.warn('daily dedupe',e)}):Promise.resolve();
+      if(j.date===doneDate||!j.list||!j.list.length){return rm.then(function(){busy=false})}
+      if(keep)p=Promise.resolve(keep);
       else{var id=rid();created=true;p=L.act({action:'list_create',data:{position:0,listInfos:[{id:id,type:'general',name:NAME,parentId:null,meta:{createTime:now,desc:'',playCount:0,songCount:0,pic:'',posTime:now,updateTime:now}}]}}).then(function(){return id})}
-      return p.then(function(id){
+      return rm.then(function(){return p}).then(function(id){
         return Promise.resolve(created?[]:L.musics(id)).then(function(ms){
           ms=ms||[];
           var same=ms.length===j.list.length&&ms.every(function(m,i){return m.id===j.list[i].id});
@@ -761,7 +806,7 @@
           var infos=j.list.map(function(m,i){var x=JSON.parse(JSON.stringify(m));x.meta=x.meta||{};x.meta.createTime=now+i;x.meta.updateTime=now;return x});
           return L.act({action:'list_music_overwrite',data:{listId:id,musicInfos:infos}}).then(function(){return true});
         });
-      }).then(function(ch){busy=false;doneDate=j.date;if((ch||created)&&document.getElementById('m-home')&&window.__alHome)setTimeout(window.__alHome.show,600)});
+      }).then(function(ch){busy=false;doneDate=j.date;if((ch||created||extra.length)&&document.getElementById('m-home')&&window.__alHome)setTimeout(window.__alHome.show,600)});
     }).catch(function(e){busy=false;console.warn('daily',e)});
   }
   setTimeout(sync,4000);
@@ -776,7 +821,7 @@
    if they or the bundle are missing it falls back to the original page with a console warning. Switching never touches playback. */
 (function(){
   if(/^\/__gw\//.test(location.pathname))return;
-  var FV='2',K='al-detail-style',SRC='/__m/folia/folia-player.js?v='+FV;
+  var FV='5',K='al-detail-style',SRC='/__m/folia/folia-player.js?v='+FV;
   var mqP=window.matchMedia('(max-width: 820px), (pointer: coarse) and (max-width: 1024px)');
   var mod=null,loading=null,handle=null,host=null,failed=false,warned=false,pdSeen=null,closing=0;
   function style(){var d=mqP.matches?'al':'folia';try{var v=localStorage.getItem(K);return v==='al'||v==='folia'?v:d}catch(e){return d}}
@@ -787,7 +832,7 @@
   var api={
     snapshot:function(){var P=window.__alPl,m=P.info()||{},g=P.progress()||{};
       return {id:m.id!=null?String(m.id):null,name:m.name||'',singer:m.singer||'',album:m.album||'',pic:m.pic||null,lrc:m.lrc||null,tlrc:m.tlrc||null,rlrc:m.rlrc||null,awlrc:m.awlrc||null,
-        playing:!!P.playing(),duration:+g.maxPlayTime||0,volume:P.vol?+P.vol()||0:1,muted:P.mute?!!P.mute():false,rate:P.rate?+P.rate()||1:1}},
+        playing:!!P.playing(),duration:+g.maxPlayTime||0,volume:P.vol?+P.vol()||0:1,muted:P.mute?!!P.mute():false,rate:P.rate?+P.rate()||1:1,playMode:P.pmode?String(P.pmode()||'listLoop'):'',loved:P.loved?!!P.loved():null}},
     time:function(){var L=window.__alLrc,t=+L.t()||0;return t+(L.off?+L.off()||0:0)},
     toggle:function(){exec('player.togglePlay')},
     prev:function(){exec('player.skipPrev')},
@@ -797,6 +842,11 @@
     setMute:function(m){exec('player.setVolumeMute',!!m)},
     close:function(){var P=window.__alPl;unmount();if(P&&P.detail){P.detail(false);return}var b=document.querySelector('.play-detail button.hide');if(b)b.click();else unmount()},
     toOriginal:function(){setStyle('al')},
+    setLoved:function(v){try{var P=window.__alPl;if(P.love)P.love(!!v)}catch(e){console.warn('[folia] love',e)}},
+    setPlayMode:function(m){try{var P=window.__alPl;if(P.setPmode)P.setPmode(String(m))}catch(e){console.warn('[folia] mode',e)}},
+    queue:function(){var P=window.__alPl;if(!P||!P.queue)return null;var q=P.queue()||[];return q.map(function(x){var m=x.musicInfo||{};var pu=(m.meta&&m.meta.picUrl)||null;if(pu&&/^http:\/\//.test(pu))pu='https://'+pu.slice(7);if(pu){pu=pu.replace(/(y\.gtimg\.cn\/music\/photo_new\/T00\dR)\d+x\d+/,'$1150x150');if(/music\.126\.net\//.test(pu)&&pu.indexOf('param=')<0)pu+=(pu.indexOf('?')<0?'?':'&')+'param=100y100'}return {id:String(x.itemId),name:m.name||'',singer:m.singer||'',later:!!x.playLater,pic:pu}})},
+    currentItem:function(){var P=window.__alPl;try{var c=P&&P.cur?P.cur():null;return c!=null?String(c):null}catch(e){return null}},
+    playItem:function(id){try{var P=window.__alPl;if(P.playItem)P.playItem(String(id))}catch(e){console.warn('[folia] playItem',e)}},
     fail:function(e){failed=true;warn('view crashed',e);unmount()},
     isPhone:function(){return mqP.matches}
   };
@@ -844,4 +894,398 @@
   }
   window.__alFolia={style:style,set:setStyle,mod:function(){return mod},state:function(){return {style:style(),mounted:!!handle,failed:failed,loaded:!!mod,mode:mod&&mod.getMode?mod.getMode():null}}};
   if(window.__alObs)window.__alObs(sync);
+})();
+
+/* 歌单管理 (2026-10-14): toolbar in the sidebar 我的列表 header — 新建 (blank or from a share link), 更新 (re-sync link-imported lists), 多选管理 (batch update / delete).
+   Uses bundle hooks __alLib.{ul,act,sync,sld,tip}. */
+(function(){
+  if(/^\/__gw\//.test(location.pathname))return;
+  var sel=null,busy=false;
+  function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
+  function L(){var l=window.__alLib;return l&&l.ul&&l.act&&l.sync?l:null}
+  function tip(m){var l=window.__alLib;if(l&&l.tip)try{l.tip(m);return}catch(e){}console.log(m)}
+  function rid(){var s='',c='abcdefghijklmnopqrstuvwxyz0123456789';for(var i=0;i<11;i++)s+=c[Math.floor(Math.random()*36)];return s}
+  var SVG={add:'<path d="M12 5v14M5 12h14"/>',sync:'<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/>',sel:'<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12l2.5 2.5 4.5-5"/>'};
+  function ico(k){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+SVG[k]+'</svg>'}
+  function btn(k,title,fn){var b=el('button','m-pl-btn');b.type='button';b.title=title;b.setAttribute('aria-label',title);b.innerHTML=ico(k);b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();fn()});return b}
+  function header(){var hs=document.querySelectorAll('#app-main .aside h2');for(var i=0;i<hs.length;i++)if(hs[i].textContent.trim()==='我的列表')return hs[i].parentElement;return null}
+  function online(){var l=L();return l?l.ul().filter(function(x){return x.type==='online'&&x.meta&&x.meta.syncId}):[]}
+  function guess(t){
+    if(/163\.com|163cn\.tv|网易云/.test(t))return 'wy';if(/qq\.com|QQ音乐/i.test(t))return 'tx';
+    if(/kugou|酷狗/.test(t))return 'kg';if(/kuwo|酷我/.test(t))return 'kw';if(/migu|咪咕/.test(t))return 'mg';return '';
+  }
+  /* ---------- toolbar ---------- */
+  function tools(){
+    var h=header();if(!h)return;
+    var t=document.getElementById('m-pl-tools');
+    if(t&&t.parentNode===h){t.classList.toggle('sel',!!sel);return}
+    if(t)t.remove();
+    h.classList.add('m-pl-head');
+    t=el('div');t.id='m-pl-tools';
+    var n=el('div','m-pl-norm');
+    n.appendChild(btn('add','新建歌单',openNew));
+    n.appendChild(btn('sync','更新全部链接歌单',function(){update(online())}));
+    n.appendChild(btn('sel','多选管理',function(){enter()}));
+    var s=el('div','m-pl-selbar');
+    var all=el('button','m-pl-tbtn','全选');all.type='button';all.dataset.a='all';
+    var up=el('button','m-pl-tbtn','更新');up.type='button';up.dataset.a='up';
+    var del=el('button','m-pl-tbtn danger','删除');del.type='button';del.dataset.a='del';
+    var ok=el('button','m-pl-tbtn','完成');ok.type='button';ok.dataset.a='done';
+    [all,up,del,ok].forEach(function(b){s.appendChild(b)});
+    s.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;e.preventDefault();e.stopPropagation();
+      var a=b.dataset.a,l=L();if(!l)return;
+      if(a==='all'){var ids=l.ul().map(function(x){return x.id});var full=ids.every(function(i){return sel.has(i)});sel=new Set(full?[]:ids);marks()}
+      else if(a==='up'){var us=l.ul().filter(function(x){return sel.has(x.id)});var on=us.filter(function(x){return x.type==='online'&&x.meta&&x.meta.syncId});
+        if(!us.length)return tip('请先勾选歌单');if(!on.length)return tip('所选歌单都不是从分享链接导入的，无需更新');update(on,us.length-on.length)}
+      else if(a==='del')remove();
+      else if(a==='done')exit();
+    });
+    t.appendChild(n);t.appendChild(s);h.appendChild(t);t.classList.toggle('sel',!!sel);
+  }
+  /* ---------- multi-select ---------- */
+  function items(){return document.querySelectorAll('#app-main .aside .my-list-container li.list-item:not(.default-list)')}
+  function marks(){
+    var aside=document.querySelector('#app-main .aside');if(aside)aside.classList.toggle('m-pl-selmode',!!sel);
+    items().forEach(function(li){var c=li.querySelector('.m-pl-chk');
+      if(!sel){if(c)c.remove();li.classList.remove('m-pl-on');return}
+      if(!c){c=el('span','m-pl-chk');li.appendChild(c)}
+      li.classList.toggle('m-pl-on',sel.has(li.dataset.id));
+    });
+    var bar=document.querySelector('#m-pl-tools .m-pl-selbar');
+    if(bar&&sel){var n=sel.size;bar.querySelector('[data-a=up]').textContent=n?'更新('+n+')':'更新';bar.querySelector('[data-a=del]').textContent=n?'删除('+n+')':'删除';
+      var l=L();bar.querySelector('[data-a=all]').textContent=l&&l.ul().length&&l.ul().every(function(x){return sel.has(x.id)})?'全不选':'全选'}
+  }
+  function enter(){sel=new Set();tools();marks()}
+  function exit(){sel=null;tools();marks()}
+  ['click','pointerdown','mousedown','touchstart','contextmenu','dragstart'].forEach(function(t){
+    document.addEventListener(t,function(e){
+      if(!sel)return;var li=e.target.closest&&e.target.closest('#app-main .aside .my-list-container li.list-item');if(!li)return;
+      e.preventDefault();e.stopPropagation();
+      if(t!=='click')return;
+      if(li.classList.contains('default-list'))return tip('「我喜欢」和「试听列表」是系统列表，不能删除');
+      var id=li.dataset.id;if(sel.has(id))sel.delete(id);else sel.add(id);marks();
+    },true);
+  });
+  document.addEventListener('keydown',function(e){if(sel&&e.key==='Escape'&&!document.getElementById('m-pl-modal'))exit()});
+  /* ---------- update (re-sync) ---------- */
+  function update(lists,skipped){
+    var l=L();if(!l)return;if(busy)return tip('正在更新中，请稍候');
+    if(!lists.length)return tip('没有从分享链接导入的歌单可以更新');
+    busy=true;var ok=0,bad=[],i=0;document.documentElement.classList.add('m-pl-busy');
+    tip('开始更新 '+lists.length+' 个歌单…');
+    (function next(){
+      if(i>=lists.length){busy=false;document.documentElement.classList.remove('m-pl-busy');
+        tip('更新完成：成功 '+ok+' 个'+(bad.length?'，失败 '+bad.length+' 个（'+bad.join('、')+'）':'')+(skipped?'，跳过 '+skipped+' 个非链接歌单':''));return}
+      var x=lists[i++];
+      Promise.resolve(l.sync(x.id)).then(function(){ok++},function(e){bad.push(x.name);console.warn('pl sync',x.name,e)}).then(next);
+    })();
+  }
+  /* ---------- delete ---------- */
+  function remove(){
+    var l=L();if(!l)return;var ls=l.ul().filter(function(x){return sel.has(x.id)});
+    if(!ls.length)return tip('请先勾选要删除的歌单');
+    modal('删除歌单',function(body,foot,close){
+      body.appendChild(el('p','m-pl-p','确定删除以下 '+ls.length+' 个歌单？删除后无法恢复。'));
+      var u=el('ul','m-pl-names');ls.forEach(function(x){u.appendChild(el('li',null,x.name))});body.appendChild(u);
+      var go=el('button','m-pl-tbtn danger solid','删除');go.type='button';foot.appendChild(go);
+      go.addEventListener('click',function(){go.disabled=true;
+        var ids=ls.map(function(x){return x.id}),cur=(/[?&]id=([^&]+)/.exec(location.hash)||[])[1];
+        Promise.resolve(l.act({action:'list_remove',data:ids})).then(function(){
+          close();tip('已删除 '+ids.length+' 个歌单');
+          if(cur&&ids.indexOf(decodeURIComponent(cur))>=0&&/^#\/library/.test(location.hash))location.hash='#/library?id=love';
+          exit();
+        },function(e){go.disabled=false;tip('删除失败：'+(e&&e.message||e))});
+      });
+    });
+  }
+  /* ---------- create ---------- */
+  function openNew(){
+    var l=L();if(!l)return tip('播放器还没加载完，请稍后再试');
+    modal('新建歌单',function(body,foot,close){
+      var tabs=el('div','m-pl-tabs'),t1=el('button','on','空白歌单'),t2=el('button',null,'从分享链接导入');t1.type=t2.type='button';tabs.appendChild(t1);tabs.appendChild(t2);body.appendChild(tabs);
+      var f1=el('div','m-pl-form'),name=el('input');name.placeholder='歌单名称';name.maxLength=60;f1.appendChild(name);
+      var f2=el('div','m-pl-form');f2.style.display='none';
+      var link=el('textarea');link.rows=3;link.placeholder='粘贴 QQ音乐 / 网易云 / 酷狗 / 酷我 / 咪咕 的歌单分享链接或分享文字';
+      var row=el('div','m-pl-row'),src=el('select');[['','自动识别平台'],['tx','QQ音乐'],['wy','网易云音乐'],['kg','酷狗音乐'],['kw','酷我音乐'],['mg','咪咕音乐']].forEach(function(o){var op=el('option',null,o[1]);op.value=o[0];src.appendChild(op)});
+      var nm2=el('input');nm2.placeholder='歌单名称（留空则用原歌单名）';nm2.maxLength=60;row.appendChild(src);row.appendChild(nm2);
+      f2.appendChild(link);f2.appendChild(row);f2.appendChild(el('div','m-pl-hint','导入后可随时点「更新」同步原歌单的最新歌曲。'));
+      var msg=el('div','m-pl-msg');body.appendChild(f1);body.appendChild(f2);body.appendChild(msg);
+      var mode=1;function sw(m){mode=m;t1.classList.toggle('on',m===1);t2.classList.toggle('on',m===2);f1.style.display=m===1?'':'none';f2.style.display=m===2?'':'none';msg.textContent='';setTimeout(function(){(m===1?name:link).focus()},30)}
+      t1.addEventListener('click',function(){sw(1)});t2.addEventListener('click',function(){sw(2)});
+      var go=el('button','m-pl-tbtn solid','创建');go.type='button';foot.appendChild(go);
+      name.addEventListener('keydown',function(e){if(e.key==='Enter')go.click()});
+      go.addEventListener('click',function(){
+        msg.textContent='';var now=Date.now(),id=rid();
+        if(mode===1){
+          var n=name.value.trim();if(!n){msg.textContent='请输入歌单名称';return}
+          go.disabled=true;
+          Promise.resolve(l.act({action:'list_create',data:{position:l.ul().length,listInfos:[{id:id,type:'general',name:n,parentId:null,meta:{createTime:now,desc:'',playCount:0,songCount:0,pic:'',posTime:now,updateTime:now}}]}}))
+            .then(function(){close();tip('已新建歌单「'+n+'」');location.hash='#/library?id='+id},function(e){go.disabled=false;msg.textContent='创建失败：'+(e&&e.message||e)});
+          return;
+        }
+        var t=link.value.trim();if(!t){msg.textContent='请粘贴歌单分享链接';return}
+        var s=src.value||guess(t);if(!s){msg.textContent='识别不出平台，请手动选择';return}
+        var dup=l.ul().filter(function(x){return x.type==='online'&&x.meta&&x.meta.source===s&&x.meta.syncId===t})[0];
+        if(dup){msg.textContent='这个歌单已经导入过了：「'+dup.name+'」';return}
+        go.disabled=true;msg.textContent='正在读取歌单…';
+        Promise.resolve(l.sld({extensionId:'online-metadata',source:s,id:t,page:1,limit:30})).then(function(r){
+          var info=(r&&r.info)||{},n=nm2.value.trim()||info.name||'导入歌单 '+new Date().toLocaleString();
+          msg.textContent='正在导入「'+n+'」'+(r&&r.total?'（共 '+r.total+' 首）':'')+'…';
+          return Promise.resolve(l.act({action:'list_create',data:{position:l.ul().length,listInfos:[{id:id,type:'online',name:n,parentId:null,meta:{extensionId:'online-metadata',source:s,pic:info.img||info.pic||'',desc:'',syncId:t,createTime:now,updateTime:now,playCount:0,posTime:now,songCount:(r&&r.total)||0,syncTime:0,sourceType:'songlist'}}]}}))
+            .then(function(){return l.sync(id)}).then(function(){close();tip('已导入歌单「'+n+'」');location.hash='#/library?id='+id});
+        }).catch(function(e){go.disabled=false;msg.textContent='导入失败：'+(e&&e.message||e)+'。请检查链接是否正确、歌单是否公开。'});
+      });
+      setTimeout(function(){name.focus()},50);
+    });
+  }
+  /* ---------- modal ---------- */
+  function modal(title,build){
+    var old=document.getElementById('m-pl-modal');if(old)old.remove();
+    var o=el('div');o.id='m-pl-modal';var box=el('div','m-pl-box'),hd=el('div','m-pl-mh'),x=el('button','m-pl-x','×');x.type='button';x.setAttribute('aria-label','关闭');
+    hd.appendChild(el('span',null,title));hd.appendChild(x);var body=el('div','m-pl-mb'),foot=el('div','m-pl-mf'),cancel=el('button','m-pl-tbtn','取消');cancel.type='button';foot.appendChild(cancel);
+    box.appendChild(hd);box.appendChild(body);box.appendChild(foot);o.appendChild(box);
+    function close(){o.remove()}
+    x.addEventListener('click',close);cancel.addEventListener('click',close);o.addEventListener('click',function(e){if(e.target===o)close()});
+    ['mousedown','pointerdown','click','dblclick','contextmenu','wheel','keydown','touchstart'].forEach(function(t){o.addEventListener(t,function(e){if(t==='keydown'&&e.key==='Escape')close();e.stopPropagation()})});
+    build(body,foot,close);document.body.appendChild(o);
+  }
+  window.__alPlMgr={open:openNew,update:function(){update(online())},enter:enter,exit:exit};
+  if(window.__alObs)window.__alObs(function(){tools();if(sel)marks()});
+})();
+
+/* song list: header click sort (name/singer/album asc↔desc, with undo) + drag rows to reorder (2026-10-18).
+   Both persist through AL's own list_music_update_position (remove ids, insert at position). */
+(function(){
+  var RE=/^#\/library\?(?:.*&)?id=([^&]+)/;
+  function lid(){var m=location.hash.match(RE);return m?decodeURIComponent(m[1]):null}
+  function lib(){return window.__alLib}
+  var FIELDS=[{re:/^(歌曲名|歌名|song name|name)$/i,k:'name',n:'歌曲名'},{re:/^(艺术家|歌手|歌手名|artist|singer)$/i,k:'singer',n:'艺术家'},{re:/^(专辑名|专辑|album)$/i,k:'album',n:'专辑名'}];
+  var state={},busy=false;
+  var coll;try{coll=new Intl.Collator(['zh-Hans-CN-u-co-pinyin','zh-Hans','zh'],{numeric:true,sensitivity:'base'})}catch(e){coll=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'})}
+  function val(m,k){var v=k==='album'?((m.meta&&(m.meta.albumName||m.meta.album))||m.albumName||''):(m[k]||'');return String(v).trim()}
+  function act(id,pos,ids){return lib().act({action:'list_music_update_position',data:{listId:id,position:pos,ids:ids}})}
+  /* toast with optional undo */
+  var tEl=null,tT=0;
+  function toast(msg,undo){
+    if(!tEl){tEl=document.createElement('div');tEl.className='m-sort-toast';document.body.appendChild(tEl)}
+    tEl.innerHTML='';var s=document.createElement('span');s.textContent=msg;tEl.appendChild(s);
+    if(undo){var b=document.createElement('button');b.type='button';b.textContent='撤销';b.onclick=function(){hide();undo()};tEl.appendChild(b)}
+    tEl.classList.add('on');clearTimeout(tT);tT=setTimeout(hide,undo?6000:2200);
+    function hide(){tEl&&tEl.classList.remove('on')}
+  }
+  function headerOf(){var hs=document.querySelectorAll('div.header');for(var i=0;i<hs.length;i++){var h=hs[i];if(h.querySelector(':scope > .num')&&h.querySelector(':scope > span'))return h}return null}
+  function decorate(){
+    var id=lid(),h=id&&headerOf();if(!h)return;var st=state[id];
+    [].forEach.call(h.querySelectorAll(':scope > span'),function(sp){
+      var f=sp.dataset.mk?FIELDS.find(function(x){return x.k===sp.dataset.mk}):FIELDS.find(function(x){return x.re.test((sp.firstChild&&sp.firstChild.nodeValue||sp.textContent).trim())});
+      if(!f)return;
+      if(!sp.dataset.mk){sp.dataset.mk=f.k;sp.classList.add('m-sortable');sp.setAttribute('role','button');sp.setAttribute('tabindex','0');var i=document.createElement('i');i.className='m-sort-ind';i.setAttribute('aria-hidden','true');sp.appendChild(i)}
+      var on=st&&st.k===f.k;sp.classList.toggle('m-sort-asc',!!(on&&st.dir==='asc'));sp.classList.toggle('m-sort-desc',!!(on&&st.dir==='desc'));
+      sp.title=on?(st.dir==='asc'?'按'+f.n+'升序（点击改为降序）':'按'+f.n+'降序（点击改为升序）'):'按'+f.n+'排序';
+    });
+  }
+  function sortBy(k){
+    var id=lid();if(!id||busy||!lib())return;var st=state[id];var dir=st&&st.k===k&&st.dir==='asc'?'desc':'asc';var f=FIELDS.find(function(x){return x.k===k});
+    busy=true;lib().musics(id).then(function(list){
+      list=list||[];if(list.length<2){busy=false;return}
+      var prev=list.map(function(m){return m.id});
+      var arr=list.map(function(m,i){return {m:m,i:i,v:val(m,k)}});
+      arr.sort(function(a,b){if(!a.v!==!b.v)return a.v?-1:1;var r=coll.compare(a.v,b.v);if(dir==='desc')r=-r;return r||a.i-b.i});
+      var ids=arr.map(function(x){return x.m.id});
+      if(ids.every(function(x,i){return x===prev[i]})){state[id]={k:k,dir:dir};decorate();busy=false;toast('已经是按'+f.n+(dir==='asc'?'升序':'降序')+'排列');return}
+      return act(id,0,ids).then(function(){state[id]={k:k,dir:dir};decorate();
+        toast('已按'+f.n+(dir==='asc'?'升序':'降序')+'排列',function(){act(id,0,prev).then(function(){delete state[id];decorate();toast('已恢复原来的顺序')})});
+      });
+    }).catch(function(e){console.warn('[sort]',e);toast('排序失败：'+(e&&e.message||e))}).then(function(){busy=false});
+  }
+  document.addEventListener('click',function(e){var sp=e.target.closest&&e.target.closest('.m-sortable');if(!sp)return;e.preventDefault();e.stopPropagation();sortBy(sp.dataset.mk)},true);
+  document.addEventListener('keydown',function(e){if(e.key!=='Enter'&&e.key!==' ')return;var sp=e.target.closest&&e.target.closest('.m-sortable');if(!sp)return;e.preventDefault();sortBy(sp.dataset.mk)},true);
+  var raf=0;new MutationObserver(function(){if(raf)return;raf=requestAnimationFrame(function(){raf=0;decorate()})}).observe(document.documentElement,{childList:true,subtree:true});
+  window.addEventListener('hashchange',decorate);
+
+  /* ---------- drag to reorder ---------- */
+  var drag=null,suppressClick=false;
+  function rowOf(t){if(!lid()||!t.closest)return null;if(t.closest('button,input,a,.music-heart-btn,.m-sortable'))return null;var li=t.closest('.my-list > ul > li');return li&&li.querySelector(':scope > .container')?li:null}
+  function nameOf(li){var n=li.querySelector('.name');return n?(n.getAttribute('aria-label')||n.textContent||'').trim():''}
+  function start(li,x,y){
+    var ul=li.parentElement,box=ul.parentElement,rh=li.offsetHeight||52,from=Math.round(li.offsetTop/rh);
+    var g=document.createElement('div');g.className='m-drag-ghost';var c=li.firstElementChild.cloneNode(true);g.appendChild(c);var r=li.getBoundingClientRect();g.style.width=r.width+'px';g.style.height=r.height+'px';document.body.appendChild(g);
+    var line=document.createElement('div');line.className='m-drag-line';ul.appendChild(line);
+    li.classList.add('m-drag-src');document.documentElement.classList.add('m-dragging');try{window.getSelection().removeAllRanges()}catch(e){}
+    drag={li:li,ul:ul,box:box,rh:rh,from:from,name:nameOf(li),g:g,line:line,dy:y-r.top,x:x,y:y,to:from,id:lid(),raf:0,n:Math.round(ul.offsetHeight/rh)};
+    move(x,y);tick();
+  }
+  function move(x,y){
+    if(!drag)return;drag.x=x;drag.y=y;var ur=drag.ul.getBoundingClientRect();
+    drag.g.style.transform='translate3d('+ur.left+'px,'+(y-drag.dy)+'px,0)';
+    var k=Math.round((y-ur.top)/drag.rh);k=Math.max(0,Math.min(drag.n,k));drag.to=k;drag.line.style.top=(k*drag.rh-1)+'px';
+    drag.line.classList.toggle('noop',k===drag.from||k===drag.from+1);
+  }
+  function tick(){if(!drag)return;var br=drag.box.getBoundingClientRect(),y=drag.y,ed=Math.min(60,br.height/5),v=0;
+    if(y<br.top+ed)v=-Math.ceil((br.top+ed-y)/4);else if(y>br.bottom-ed)v=Math.ceil((y-(br.bottom-ed))/4);
+    if(v){drag.box.scrollTop+=v;move(drag.x,drag.y)}drag.raf=requestAnimationFrame(tick)}
+  function end(cancel){
+    if(!drag)return;var d=drag;drag=null;cancelAnimationFrame(d.raf);d.g.remove();d.line.remove();d.li.classList.remove('m-drag-src');document.documentElement.classList.remove('m-dragging');
+    suppressClick=true;setTimeout(function(){suppressClick=false},350);
+    if(cancel||d.to===d.from||d.to===d.from+1||!lib())return;
+    var pos=d.to>d.from?d.to-1:d.to;
+    lib().musics(d.id).then(function(list){var m=list&&list[d.from];
+      if(!m||(d.name&&(m.name||'').trim()!==d.name))throw new Error('列表已变化，请重试');
+      return act(d.id,pos,[m.id]).then(function(){if(state[d.id]){delete state[d.id];decorate()}toast('已移到第 '+(pos+1)+' 首')});
+    }).catch(function(e){toast('移动失败：'+(e&&e.message||e))});
+  }
+  document.addEventListener('click',function(e){if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false}},true);
+  document.addEventListener('contextmenu',function(e){if(drag||pend&&pend.armed){e.preventDefault();e.stopPropagation()}},true);
+  var pend=null;
+  document.addEventListener('pointerdown',function(e){
+    if(drag||e.button!==0||busy)return;var li=rowOf(e.target);if(!li)return;
+    pend={li:li,x:e.clientX,y:e.clientY,t:e.pointerType,armed:false,tm:0};
+    if(e.pointerType!=='mouse')pend.tm=setTimeout(function(){if(pend&&!drag){pend.armed=true;try{navigator.vibrate&&navigator.vibrate(12)}catch(_){}start(pend.li,pend.x,pend.y)}},380);
+  },true);
+  document.addEventListener('pointermove',function(e){
+    if(drag){move(e.clientX,e.clientY);return}
+    if(!pend)return;var dx=e.clientX-pend.x,dy=e.clientY-pend.y;
+    if(pend.t==='mouse'){if(Math.abs(dy)>6&&Math.abs(dy)>Math.abs(dx)){var p=pend;pend=null;start(p.li,p.x,p.y);move(e.clientX,e.clientY)}else if(Math.abs(dx)>10)pend=null}
+    else if(Math.hypot(dx,dy)>8){clearTimeout(pend.tm);pend=null}
+  },true);
+  function up(e){if(pend){clearTimeout(pend.tm);pend=null}if(drag)end(e.type==='pointercancel')}
+  document.addEventListener('pointerup',up,true);document.addEventListener('pointercancel',function(e){if(drag&&drag.li&&e.pointerType!=='mouse')return;up(e)},true);
+  document.addEventListener('touchmove',function(e){if(drag){e.preventDefault();var t=e.touches[0];t&&move(t.clientX,t.clientY)}},{passive:false,capture:true});
+  document.addEventListener('touchend',function(){if(drag)end(false)},true);
+  document.addEventListener('selectstart',function(e){if(drag)e.preventDefault()},true);
+  document.addEventListener('keydown',function(e){if(drag&&e.key==='Escape')end(true)},true);
+  window.addEventListener('hashchange',function(){if(drag)end(true)});
+})();
+
+/* app chrome (2026-10-18): status/nav bar colours follow the page edges (theme colour, theme image, detail page, Folia);
+   song-detail page gets 全屏 + 横屏 buttons on phones (Android app: native immersive/orientation via AndroidBridge; browsers: Fullscreen API). */
+(function(){
+  if(/^\/__gw\//.test(location.pathname))return;
+  var B=window.AndroidBridge,APP=!!(B&&B.setBars),PHONE=APP||matchMedia('(pointer: coarse)').matches;
+  /* ---- edge-to-edge (app ≥1.0.8): page draws under a transparent status bar, frosted strip on top ---- */
+  var E2E=!!(B&&B.e2e),sbar=null,HTML=document.documentElement;
+  window.__alSide=function(l,r){HTML.style.setProperty('--al-sal',(+l||0)+'px');HTML.style.setProperty('--al-sar',(+r||0)+'px')};
+  window.__alSat=function(px){HTML.style.setProperty('--al-sat',(+px||0)+'px');HTML.classList.toggle('al-fs',!(+px))};
+  if(E2E){
+    try{if(B.safe){var q=String(B.safe()).split(',');window.__alSat(q[0]);window.__alSide(q[1],q[2])}else window.__alSat(B.sat())}catch(e){}
+    HTML.classList.add('al-e2e');
+    try{B.e2e(true)}catch(e){}
+  }
+  /* ---- bar colours ---- */
+  function parse(c){var m=c&&String(c).match(/rgba?\(([^)]+)\)/);if(!m)return null;var p=m[1].split(/[\s,\/]+/).filter(Boolean).map(parseFloat);if(p.length<3)return null;return [p[0],p[1],p[2],p.length>3?p[3]:1]}
+  var imgC={};
+  function imgColor(url,edge){var k=url+'|'+edge;if(k in imgC)return imgC[k];imgC[k]=null;var im=new Image();
+    im.onload=function(){try{var w=32,h=Math.max(8,Math.round(32*im.naturalHeight/im.naturalWidth)),cv=document.createElement('canvas');cv.width=w;cv.height=h;var x=cv.getContext('2d');x.drawImage(im,0,0,w,h);
+      var bh=Math.max(1,h>>3),d=x.getImageData(0,edge==='t'?0:h-bh,w,bh).data,r=0,g=0,b=0,n=0;for(var i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2];n++}imgC[k]=[r/n,g/n,b/n,1];kick()}catch(e){}};
+    im.src=url;return null}
+  function up(e){return e.parentElement||(e.getRootNode&&e.getRootNode().host)||null}
+  function hit(x,y){var e=document.elementFromPoint(x,y),g=0;while(e&&e.shadowRoot&&g++<5){var s=e.shadowRoot.elementFromPoint(x,y);if(!s||s===e)break;e=s}return e}
+  function colorAt(x,y,edge){
+    var layers=[],e=hit(x,y),g=0;
+    for(;e&&e.nodeType===1&&g++<40;e=up(e)){
+      if(e.id&&/^m-vbar$/.test(e.id))continue;
+      var cs=getComputedStyle(e),bi=cs.backgroundImage,c;
+      if(bi&&bi!=='none'){
+        var u=bi.match(/url\(["']?([^"')]+)["']?\)/);
+        if(u){c=imgColor(u[1],edge);if(c){layers.push(c);break}}
+        else{var cols=bi.match(/rgba?\([^)]+\)/g);if(cols&&cols.length){c=parse(cols[edge==='t'?0:cols.length-1]);if(c&&c[3]>0){layers.push(c);if(c[3]>=.95)break}}}
+      }
+      c=parse(cs.backgroundColor);if(c&&c[3]>0){layers.push(c);if(c[3]>=.95)break}
+    }
+    var r=[255,255,255];for(var i=layers.length-1;i>=0;i--){var L=layers[i],a=Math.min(1,L[3]);r=[L[0]*a+r[0]*(1-a),L[1]*a+r[1]*(1-a),L[2]*a+r[2]*(1-a)]}
+    return '#'+r.map(function(v){return ('0'+Math.round(Math.max(0,Math.min(255,v))).toString(16)).slice(-2)}).join('')}
+  var last='',meta=null,qd=false,lastRun=0;
+  function run(){qd=false;lastRun=Date.now();
+    var w=innerWidth,h=innerHeight;if(!w||!h)return;
+    var t=colorAt(1,1,'t'),b=colorAt(1,h-2,'b'),k=t+b;if(k===last)return;last=k;
+    if(APP){try{B.setBars(t,b)}catch(e){}}
+    else{if(!meta){meta=document.querySelector('meta[name="theme-color"]')||document.head.appendChild(Object.assign(document.createElement('meta'),{name:'theme-color'}))}meta.content=t}}
+  function kick(){if(qd)return;qd=true;setTimeout(run,Math.max(0,250-(Date.now()-lastRun)))}
+  window.__alBars={run:function(){last='';run()},state:function(){return last}};
+  if(window.__alObs)window.__alObs(kick);setInterval(kick,1500);addEventListener('resize',kick);kick();
+
+  /* ---- 全屏 / 横屏 on the song-detail page (phones) ---- */
+  if(!PHONE||(!APP&&/AnyListenApp\//.test(navigator.userAgent)))return;   /* app < 1.0.6 has no native fullscreen/orientation */
+  var FS=false,LAND=false;
+  var I={fs:'<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>',
+    unfs:'<path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/>',
+    rot:'<rect x="2" y="10" width="14" height="10" rx="2"/><path d="M12 3.5a8 8 0 0 1 8 7.5"/><path d="m22.5 9-2.5 2.5L17.5 9"/>',
+    unrot:'<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>'};
+  function svg(k){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+I[k]+'</svg>'}
+  function isFs(){return APP?FS:!!document.fullscreenElement}
+  function setFs(on){
+    if(APP){FS=on;try{B.setFullscreen(on)}catch(e){}}
+    else{try{if(on)document.documentElement.requestFullscreen({navigationUI:'hide'}).catch(function(){});else if(document.fullscreenElement)document.exitFullscreen().catch(function(){})}catch(e){}}
+    if(!on&&LAND&&!APP)LAND=false;paint()}
+  function setLand(on){LAND=on;
+    if(APP){try{B.setOrientation(on?'landscape':'auto')}catch(e){}FS=on;try{B.setFullscreen(on)}catch(e){}}
+    else if(on){var go=function(){try{screen.orientation.lock('landscape').catch(function(){})}catch(e){}};if(!document.fullscreenElement){try{document.documentElement.requestFullscreen({navigationUI:'hide'}).then(go,go)}catch(e){go()}}else go()}
+    else{try{screen.orientation.unlock()}catch(e){}try{if(document.fullscreenElement)document.exitFullscreen().catch(function(){})}catch(e){}}
+    paint()}
+  document.addEventListener('fullscreenchange',function(){if(!document.fullscreenElement&&LAND&&!APP)LAND=false;paint()});
+  function btn(id,cls){var b=document.createElement('button');b.type='button';b.id=id;b.className=cls;
+    b.addEventListener('click',function(e){e.stopPropagation();e.preventDefault();if(id.indexOf('fs')>0)setFs(!isFs());else setLand(!LAND)});
+    ['mousedown','pointerdown','dblclick','contextmenu'].forEach(function(t){b.addEventListener(t,function(e){e.stopPropagation()})});return b}
+  function paintBtn(b,on,a,bOff,lab,labOff){if(!b)return;var k=on?a:bOff;if(b.dataset.k!==k){b.dataset.k=k;b.innerHTML=svg(k)}var l=on?labOff:lab;if(b.getAttribute('aria-label')!==l){b.setAttribute('aria-label',l);b.title=l}b.classList.toggle('on',on)}
+  function paint(){var f=isFs();
+    var fh=document.getElementById('m-folia'),sr=fh&&fh.shadowRoot;
+    paintBtn(document.getElementById('m-vrot'),LAND,'unrot','rot','横屏','竖屏');paintBtn(sr&&sr.getElementById('m-vrot2'),LAND,'unrot','rot','横屏','竖屏')}
+  var wasOpen=false;
+  function sync(){
+    var pd=document.querySelector('.play-detail'),P=window.__alPl,shown=!!pd&&(!(P&&P.shown)||P.shown());
+    var F=window.__alFolia,fol=shown&&F&&F.state&&F.state().mounted;
+    if(shown){
+      var cb=pd.querySelector('.header .control-btn');
+      if(cb&&!document.getElementById('m-vrot')){var ref=cb.querySelector('.fullscreen')||cb.firstChild;var cls='m-vbtn '+((cb.className.match(/svelte-\w+/)||[''])[0]);
+        cb.insertBefore(btn('m-vrot',cls),ref);paint()}
+      if(fol){
+        var fh=document.getElementById('m-folia'),sr=fh&&fh.shadowRoot,tp=sr&&sr.querySelector('.fal-top');
+        if(sr&&!sr.getElementById('m-fol-x')){var st=document.createElement('style');st.id='m-fol-x';st.textContent='.\\-top-3.right-8.h-14.w-3.rounded-full{display:none!important}.fal-top{top:var(--al-sat,0px)!important}'+(document.documentElement.classList.contains('al-e2e')?'.fal-top{padding-top:max(4px,calc(12px - var(--al-sat,0px)))!important}':'')+'.fal-top,.fal-bottom{left:var(--al-sal,0px)!important;right:var(--al-sar,0px)!important}.fal-q-corner{right:var(--al-sar,0px)!important}#m-vrot2{margin-right:auto;display:flex;align-items:center;justify-content:center}#m-vrot2 svg{width:20px;height:20px}';sr.appendChild(st)}
+        var cv=tp&&tp.firstElementChild;
+        if(cv&&cv.tagName==='BUTTON'&&cv.id!=='m-vrot2'&&!(cv.nextElementSibling&&cv.nextElementSibling.id==='m-vrot2')){var o=sr.getElementById('m-vrot2');if(o)o.remove();var nb=btn('m-vrot2',cv.className);cv.after(nb);paint()}}
+      wasOpen=true;
+    }else{
+      if(wasOpen){wasOpen=false;if(LAND)setLand(false);if(isFs())setFs(false)}
+    }
+  }
+  if(window.__alObs)window.__alObs(sync);setInterval(sync,1000);
+  window.__alView={fs:setFs,land:setLand,state:function(){return {fs:isFs(),land:LAND}}};
+})();
+
+/* ---- 歌单秒切换 (2026-10-19): persistent per-list cache (IndexedDB) + background preload.
+   Bundle patch: Jo(setMusicList) calls window.__alLCput; Library view shows Y.allMusicList / __alLC.peek(id) instantly
+   (never the previous list), ignores stale responses; window.__alLib2={Y,Ho,Qs}. ---- */
+(function(){
+  if(window.__alLC)return;
+  var snap=new Map(),db=null,uid='',pend={},timer=null,ready=false;
+  window.__alLC={peek:function(id){return snap.get(id)||null},ready:function(){return ready},size:function(){return snap.size}};
+  function plain(list){try{return structuredClone(list)}catch(e){try{return JSON.parse(JSON.stringify(list))}catch(e2){return null}}}
+  function flush(){timer=null;if(!db)return;var ids=Object.keys(pend);pend={};
+    try{var tx=db.transaction('l','readwrite'),st=tx.objectStore('l');
+      ids.forEach(function(id){var L2=window.__alLib2,list=L2&&L2.Y.allMusicList.get(id);if(!list||list.length>20000)return;var p=plain(list);if(!p)return;snap.set(id,p);st.put({k:uid+'|'+id,t:Date.now(),list:p})})}catch(e){}}
+  function queue(id){if(!id)return;pend[id]=1;if(!timer)timer=setTimeout(flush,1500)}
+  window.__alLCput=function(id){queue(id)};
+  function hookEvents(){var L2=window.__alLib2;if(!L2||!L2.Ho||L2.Ho.__lc)return !!(L2&&L2.Ho&&L2.Ho.__lc);var H=L2.Ho;H.__lc=1;
+    ['listMusicChanged','listMusicUpdated'].forEach(function(n){var f=H[n];if(typeof f!=='function')return;H[n]=function(x){try{var ids=x instanceof Map?Array.from(x.keys()):Array.isArray(x)?x:[x];ids.forEach(queue)}catch(e){}return f.apply(this,arguments)}});return true}
+  function open(){
+    var rq;try{rq=indexedDB.open('al-lc',1)}catch(e){return}
+    rq.onupgradeneeded=function(){rq.result.createObjectStore('l',{keyPath:'k'})};
+    rq.onsuccess=function(){db=rq.result;try{var g=db.transaction('l').objectStore('l').getAll();g.onsuccess=function(){(g.result||[]).forEach(function(r){var i=r.k.indexOf('|');if(r.k.slice(0,i)===uid)snap.set(r.k.slice(i+1),r.list)});ready=true;if(Object.keys(pend).length&&!timer)timer=setTimeout(flush,300)}}catch(e){ready=true}};
+  }
+  fetch('/__gw/me',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(j){uid=j&&(j.name||j.email||j.user||j.id)||'';open()},function(){open()});
+  /* background preload: fetch every list once (sequential, gentle), so switching never waits on the network */
+  var started=false;
+  function preload(){
+    var L=window.__alLib,L2=window.__alLib2;if(!L||!L2||!L.lists){setTimeout(preload,1500);return}
+    hookEvents();
+    var ids=[];try{ids=L.lists().map(function(l){return l.id}).filter(Boolean)}catch(e){}
+    if(!ids.length){setTimeout(preload,1500);return}
+    if(started)return;started=true;
+    var cur=(/[?&]id=([^&]+)/.exec(location.hash)||[])[1];if(cur){cur=decodeURIComponent(cur);ids.sort(function(a,b){return (a===cur?-1:0)-(b===cur?-1:0)})}
+    var i=0;(function next(){if(i>=ids.length)return;var id=ids[i++];
+      if(L2.Y.allMusicList.has(id)){next();return}
+      var go=function(){L2.Qs(id).catch(function(){}).then(function(){setTimeout(next,document.hidden?800:120)})};
+      if(window.requestIdleCallback)requestIdleCallback(go,{timeout:1200});else setTimeout(go,50)})();
+  }
+  setTimeout(preload,2500);
 })();
