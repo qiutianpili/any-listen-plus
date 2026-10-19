@@ -18,6 +18,10 @@ export interface AlSnapshot {
   volume: number;
   muted: boolean;
   rate: number;
+  /** AL player.togglePlayMethod: listLoop | singleLoop | random | list | none ('' when the bundle hook is missing) */
+  playMode: string;
+  /** in AL's 我喜欢 list (null when the bundle hook is missing) */
+  loved: boolean | null;
 }
 export interface AlApi {
   snapshot(): AlSnapshot;
@@ -36,4 +40,12 @@ export interface AlApi {
   /** switch this browser to AL's original detail page (persists al-detail-style) */
   toOriginal(): void;
   isPhone(): boolean;
+  setPlayMode(mode: string): void;
+  setLoved(v: boolean): void;
+  /** current play queue (AL playList) or null when the bundle hook is missing */
+  queue(): AlQueueItem[] | null;
+  /** itemId of the playing queue item */
+  currentItem(): string | null;
+  playItem(itemId: string): void;
 }
+export interface AlQueueItem { id: string; name: string; singer: string; later: boolean; pic: string | null }
