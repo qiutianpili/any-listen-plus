@@ -13,7 +13,6 @@
 | `gateway/*.example.json` | 网关配置与用户列表示例 |
 | `patches/v0.11.0.json`、`patches/apply.js` | 对官方 v0.11.0 构建产物及音源加载扩展 lx-api-source-loader 0.1.7 的补丁（带 sha256 校验） |
 | `deploy/` | systemd 服务与 nginx 配置示例 |
-| `account-sources/` | 账号音源：网易云 / QQ / 酷狗扫码登录，用每个用户自己的账号取播放链接，见 [account-sources/README.md](./account-sources/README.md) |
 | `folia/` | Folia 详情页（Folia Major 歌词可视化移植）源码与构建脚本，见 [folia/README.md](./folia/README.md) |
 
 ## 功能
@@ -37,23 +36,24 @@
 - 扩展隔离上下文上限 5 → 12，可同时加载更多音源扩展。
 - **音源竞速**：按音源顺序获取播放链接，当前音源 2.5 秒没响应就同时请求下一个，先拿到可用链接者胜；单个音源最长 9 秒，失败的音源降级 10 分钟；启动时各音源并行加载，冷启动后第一首不再等最慢的音源。
 - **每日推荐**：每天 05:00（北京时间）按用户的播放历史和歌单，用 QQ 音乐「相似歌曲」生成 30 首没听过的歌（去伴奏/DJ/翻唱等，每位歌手最多 3 首），写入用户的「每日推荐」歌单；7 天未上线的用户跳过，回来打开时当场补上。不需要 AI 接口。
+- **秒播 + 淡入淡出**：在线搜索和歌单里单击/双击立即切歌，首次点击即预取播放链接（链接缓存 120 秒）；短时间内重复点同一首只算一次，连续快速切歌以最后一首为准；切歌、暂停、继续都有固定 0.5 秒淡入淡出（后台页面不淡化）。
+- **歌单秒切换**：歌单内容本地缓存，切换歌单立即显示，不再先闪出上一个歌单。
+- **歌单管理**：排序、拖动调整歌曲顺序；心形与播放模式按钮即点即变。
+- 在线搜索默认音源顺序：tx、wy、kg、kw、mg。
 - 浏览器缓存一次性清理：脚本版本里的 `CLR` 变化时，每个浏览器自动清一次本站缓存。
 
 ### 界面
 - **手机适配**：抽屉式侧栏、底部播放栏统一布局、详情页三行播放控制、视频式拖动进度条（拖动时显示时间）。
 - **电脑端页面大小**：主界面默认 125%，侧栏可调 80–200%；歌曲详情页单独调节，互不影响。
 - 详情页自下而上弹出，背景改为主题色渐变；进度条悬停显示时间。
+- **安卓 / 手机 WebView 适配**：沉浸式透明状态栏、刘海/挖孔区域填充、详情页横屏全屏按钮。
 - **主页**：侧栏第一项，显示公告、推送和歌单卡片；「我喜欢」为爱心图标、「每日推荐」为太阳图标，其他歌单可设一个 emoji 作为封面（不使用歌曲封面或自定义图片）；从主页打开的歌单点「返回」回到主页。
-
-### 账号音源（扫码登录）
-- 侧栏「账号音源」弹窗打开 `/al-login/`：用网易云音乐 / QQ音乐 / 酷狗音乐 App 扫码登录**自己的**账号，可随时检查状态、退出、关闭开关。
-- 播放这三个平台的歌曲时，优先用本人账号取链接（含账号有权限的 VIP 歌曲，音质按设置逐级降到账号可得的最高档），失败自动回退到原有音源。
-- 每个用户的登录只给自己用；管理员可把自己的账号共享给指定用户（默认关闭）。详见 [account-sources/README.md](./account-sources/README.md)。
 
 ### Folia 详情页
 - 歌曲详情页可切换为 [Folia Major](https://github.com/chthollyphile/folia-major)（chthollyphile，AGPL-3.0）的歌词可视化：14 种歌词视觉模式、多种背景、各模式设置面板、静态模式。
 - **Folia / 原版** 随时切换，不影响播放；选择保存在 localStorage `al-detail-style`，未设置时手机默认原版、电脑默认 Folia。
 - 按需加载：只有以 Folia 打开详情页才下载，GPU 模式（three.js / pixi）和 WebGL 背景再单独按需加载；关闭即卸载。缺少 bundle 钩子或加载失败时自动回退原版。
+- 底栏增加喜欢、播放模式按钮和播放队列面板；设置里的「默认」同时重置背景设置。
 - 构建与说明见 [folia/README.md](./folia/README.md)。
 
 ## 部署（Debian / Ubuntu 示例）
@@ -75,16 +75,15 @@
    ```bash
    mkdir -p /opt/al-gateway /opt/al-users
    cp plus/gateway/gw.js /opt/al-gateway/
-   cp plus/gateway/config.example.json /opt/al-gateway/config.json   # 填 Access 团队域名、AUD、管理员邮箱、站点 origin（https://你的域名，用于 POST 的同源校验）
+   cp plus/gateway/config.example.json /opt/al-gateway/config.json   # 填 Access 团队域名、AUD、管理员邮箱
    cp plus/gateway/users.example.json /opt/al-gateway/users.json     # 填管理员实例的 Any Listen 密码
    cp plus/deploy/*.service /etc/systemd/system/ && systemctl daemon-reload
    systemctl enable --now al-gateway
    cp plus/gateway/daily.py /opt/al-gateway/
    systemctl enable --now al-daily.timer   # 每日推荐
    ```
-   管理员实例监听 9500（原 `any-listen` 服务），其他用户实例从 9501 起，由网关自动创建 `any-listen-u@<id>` 服务。每个用户实例以独立系统用户 `al-<id>` 运行（网关创建/删除），数据目录 0700；id 单调递增、删除后不复用。
+   管理员实例监听 9500（原 `any-listen` 服务），其他用户实例从 9501 起，由网关自动创建 `any-listen-u@<id>` 服务。
 5. Cloudflare：用 Tunnel 把域名指向本机 nginx，并建一个 Access 应用，在策略里放行要使用的邮箱（可开启邮箱验证码、Google、GitHub 登录）。网关只信任 Access 签发的 JWT。
-6. 账号音源（可选）：见 [account-sources/README.md](./account-sources/README.md)。
 
 > 注意：不要让 CDN 缓存音频；补丁过的 `indexBzjGy48v.js` 需以 `no-cache` 提供，修改后记得清除 CDN 缓存。
 
