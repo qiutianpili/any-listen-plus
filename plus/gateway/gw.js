@@ -44,10 +44,22 @@ setInterval(() => { let ch = false; for (const [k, v] of lastActive) if ((seenAt
 // 每日推荐 (2026-10-12): daily.py writes DIR/daily/<name>.json; serve today's, or generate it now for an online user who has none yet
 const DAILY_DIR = DIR + '/daily', dailyRun = new Map();
 const cnDate = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+// 每日推荐 dedupe (2026-10-19): ids of the user's existing 每日推荐 lists read from their DB (read-only), so the page never
+// creates a second one when its own list state loads late, and removes extras made by two devices at once. null = unknown.
+let Sqlite = null; try { process.removeAllListeners('warning'); Sqlite = require('node:sqlite').DatabaseSync; } catch (e) {}
+function dailyIds(u) {
+  if (!Sqlite) return null;
+  const f = u.role === 'admin' ? ADMIN_DATA + '/app/anylisten.data.db' : path.join(UROOT, u.name, 'data/app/anylisten.data.db');
+  let db = null;
+  try {
+    db = new Sqlite(f, { readOnly: true });
+    return db.prepare("SELECT id FROM my_list l WHERE name = '每日推荐' AND type = 'general' ORDER BY (SELECT COUNT(*) FROM my_list_music_info m WHERE m.list_id = l.id) DESC, json_extract(meta, '$.createTime')").all().map(r => r.id);
+  } catch (e) { console.error('dailyIds', u.name, e.message); return null; } finally { try { db && db.close(); } catch (e) {} }
+}
 function dailyFor(u) {
   const today = cnDate(); let d = null;
   try { d = JSON.parse(fs.readFileSync(path.join(DAILY_DIR, u.name + '.json'), 'utf8')); } catch (e) {}
-  if (d && d.date === today) return { date: d.date, list: d.list || [] };
+  if (d && d.date === today) return { date: d.date, list: d.list || [], ids: dailyIds(u) };
   if (dailyRun.get(u.name) !== today) {
     dailyRun.set(u.name, today);
     execFile('python3', [DIR + '/daily.py', '--user', u.name, '--active'], { timeout: 180000 }, (e, so, se) => { if (e) console.error('daily', u.name, e.message); if (se) console.log('daily', String(se).trim()); });
@@ -76,7 +88,7 @@ const check = (pw, h) => { const [s, d] = h.split(':'); const x = crypto.scryptS
 const sign = v => v + '.' + crypto.createHmac('sha256', SECRET).update(v).digest('hex').slice(0, 32);
 // Cloudflare Access login (2026-10-10): only the admin email is allowed; whitelist passwords no longer used
 const https = require('https');
-// fill in /opt/al-gateway/config.json: {"cfTeam":"https://<team>.cloudflareaccess.com","cfAud":"<Access app AUD tag>","adminEmails":["you@example.com"],"origin":"https://music.example.com"}
+// fill in /opt/al-gateway/config.json: {"cfTeam":"https://<team>.cloudflareaccess.com","cfAud":"<Access app AUD tag>","adminEmails":["you@example.com"]}
 const GW_CFG = JSON.parse(fs.readFileSync(DIR + '/config.json', 'utf8'));
 const CF_TEAM = String(GW_CFG.cfTeam || '').replace(/\/+$/, ''), CF_AUD = String(GW_CFG.cfAud || '');
 const ADMIN_EMAILS = (GW_CFG.adminEmails || []).map(e => String(e).toLowerCase());
@@ -149,7 +161,7 @@ h.addEventListener('pointerup',function(){y0=null});h.addEventListener('pointerc
 t.addEventListener('pointerdown',function(e){if(e.target!==t)return;var r=e.clientY/innerHeight;se.scrollTop=r*(se.scrollHeight-innerHeight)});})()</script></body></html>`;
 // CSRF (2026-10-14): every POST to /__gw/* must come from our own origin; admin POSTs additionally need the
 // per-admin form token (or the X-AL header that only same-origin script can set).
-const ORIGIN = String(GW_CFG.origin || process.env.GW_ORIGIN || '').replace(/\/+$/, ''); // public https origin of the site
+const ORIGIN = process.env.GW_ORIGIN || 'https://music.example.com';
 const csrfTok = u => crypto.createHmac('sha256', SECRET).update('csrf|' + u.name).digest('hex').slice(0, 32);
 // Origin may be "null" for form posts under a strict Referrer-Policy; then trust the browser-set Sec-Fetch-Site.
 const sameOrigin = req => { const o = req.headers.origin, s = req.headers['sec-fetch-site']; if (o && o !== 'null') return o === ORIGIN; if (s) return s === 'same-origin'; return !o && req.headers['x-al'] === '1'; };
