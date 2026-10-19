@@ -46,23 +46,16 @@ const DAILY_DIR = DIR + '/daily', dailyRun = new Map();
 const cnDate = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
 // 每日推荐 dedupe (2026-10-19): ids of the user's existing 每日推荐 lists read from their DB (read-only), so the page never
 // creates a second one when its own list state loads late, and removes extras made by two devices at once. null = unknown.
-let Sqlite = null; try { process.removeAllListeners('warning'); Sqlite = require('node:sqlite').DatabaseSync; } catch (e) {}
-function dailyIds(u) {
-  if (!Sqlite) return null;
-  const f = u.role === 'admin' ? ADMIN_DATA + '/app/anylisten.data.db' : path.join(UROOT, u.name, 'data/app/anylisten.data.db');
-  let db = null;
-  try {
-    db = new Sqlite(f, { readOnly: true });
-    return db.prepare("SELECT id FROM my_list l WHERE name = '每日推荐' AND type = 'general' ORDER BY (SELECT COUNT(*) FROM my_list_music_info m WHERE m.list_id = l.id) DESC, json_extract(meta, '$.createTime')").all().map(r => r.id);
-  } catch (e) { console.error('dailyIds', u.name, e.message); return null; } finally { try { db && db.close(); } catch (e) {} }
+async function dailyIds(u) {
+  try { return JSON.parse(await helper(['dailyids', u.role === 'admin' ? 'admin' : u.name], null, 10000)); } catch (e) { console.error('dailyIds', u.name, e.message); return null; }
 }
-function dailyFor(u) {
+async function dailyFor(u) {
   const today = cnDate(); let d = null;
   try { d = JSON.parse(fs.readFileSync(path.join(DAILY_DIR, u.name + '.json'), 'utf8')); } catch (e) {}
-  if (d && d.date === today) return { date: d.date, list: d.list || [], ids: dailyIds(u) };
+  if (d && d.date === today) return { date: d.date, list: d.list || [], ids: await dailyIds(u) };
   if (dailyRun.get(u.name) !== today) {
     dailyRun.set(u.name, today);
-    execFile('python3', [DIR + '/daily.py', '--user', u.name, '--active'], { timeout: 180000 }, (e, so, se) => { if (e) console.error('daily', u.name, e.message); if (se) console.log('daily', String(se).trim()); });
+    helper(['daily', u.name, 'active'], null, 180000).catch(e => console.error('daily', u.name, e.message));
   }
   return { pending: true };
 }
@@ -70,7 +63,7 @@ const portUp = port => new Promise(ok => { const s = net.connect(port, '127.0.0.
 async function ensureStarted(u) {
   touch(u);
   if (await portUp(u.port)) return true;
-  if (!starting.has(u.name)) { starting.set(u.name, Date.now()); run('systemctl', ['start', unitOf(u)]).catch(e => console.error('start', u.name, e.message)).finally(() => setTimeout(() => starting.delete(u.name), 30000)); }
+  if (!starting.has(u.name)) { starting.set(u.name, Date.now()); helper(['start', u.role === 'admin' ? 'admin' : u.name]).catch(e => console.error('start', u.name, e.message)).finally(() => setTimeout(() => starting.delete(u.name), 30000)); }
   return false;
 }
 setInterval(async () => {
@@ -79,7 +72,7 @@ setInterval(async () => {
     const t = lastActive.get(u.name) || BOOT;
     if (Date.now() - t < lim || starting.has(u.name)) continue;
     if (!(await portUp(u.port))) continue;
-    console.log('idle stop', u.name); run('systemctl', ['stop', unitOf(u)]).catch(e => console.error('stop', u.name, e.message));
+    console.log('idle stop', u.name); helper(['stop', u.role === 'admin' ? 'admin' : u.name]).catch(e => console.error('stop', u.name, e.message));
   }
 }, 30000);
 const saveUsers = () => fs.writeFileSync(USERS, JSON.stringify(users, null, 2), { mode: 0o600 });
@@ -170,23 +163,14 @@ function send(res, code, body, headers = {}) { res.writeHead(code, Object.assign
 function readBody(req) { return new Promise(r => { let b = ''; req.on('data', d => { b += d; if (b.length > 1e5) req.destroy(); }); req.on('end', () => r(new URLSearchParams(b))); }); }
 const loginPage = (err = '') => page('登录 Any Listen', `<h1>Any Listen 登录</h1>${err ? `<div class="err">${esc(err)}</div>` : ''}<form method="post" action="/__gw/login"><label>用户名<input name="u" autocomplete="username" required></label><label>密码<input name="p" type="password" autocomplete="current-password" required></label><button style="width:100%">登录</button></form><div class="tip">仅限白名单用户</div>`);
 function run(cmd, args) { return new Promise((ok, no) => execFile(cmd, args, { timeout: 60000 }, (e, so, se) => e ? no(new Error(se || e.message)) : ok(so))); }
+// privilege drop (2026-10-19): the gateway runs as al-gw; anything that needs root goes through the fixed-verb helper via sudo
+const HELPER = '/opt/al-gateway-root/helper.js', NODE = process.execPath;
+function helper(args, input, timeout = 60000) { return new Promise((ok, no) => { const c = execFile('sudo', ['-n', NODE, HELPER, ...args], { timeout }, (e, so, se) => e ? no(new Error(String(se || e.message).trim())) : ok(so)); if (input != null) c.stdin.end(input); else c.stdin.end(); }); }
 const SKIP_CFG = /^player\.|^list\.|^playDetail|^common\.lastPlay/;
 // security (2026-10-14): each player runs as its own system user al-<id> (data dir 0700), ids are never reused,
 // and the admin's per-user account-source script/token is stripped from the cloned extension dir before first start.
 const sysUser = name => 'al-' + name;
-const SAFE_ID = /^[A-Za-z0-9_]{1,24}$/;
-const ACC_INSTALL = '/opt/al-accsrc/bin/install.py';
-function stripClonedAccountSource(extDir) {
-  const base = path.join(extDir, 'datas', 'lx-api-source-loader'), cf = path.join(base, 'configuration.json');
-  for (const dn0 of ['gdstudio', 'online-metadata', 'lx-api-source-loader']) try { fs.rmSync(path.join(extDir, 'datas', dn0, 'output.log'), { force: true }); } catch (e) {}
-  let c; try { c = JSON.parse(fs.readFileSync(cf, 'utf8')); } catch (e) { return; }
-  const gone = new Set((c.importedScriptSources || []).filter(x => x && x.fileName === 'account-source.js').map(x => x.id));
-  if (!gone.size) return;
-  c.importedScriptSources = (c.importedScriptSources || []).filter(x => !gone.has(x.id));
-  for (const k of ['sourceOrder', 'enabledScripts']) if (Array.isArray(c[k])) c[k] = c[k].filter(x => !gone.has(x));
-  for (const g of gone) if (/^[0-9a-f]{32}$/.test(g)) fs.rmSync(path.join(base, 'storage', 'scripts', g), { force: true });
-  fs.writeFileSync(cf, JSON.stringify(c, null, '\t'));
-}
+const SAFE_ID = /^[A-Za-z0-9_]{1,24}$/, regBusy = new Set();
 function allocPort() {
   // monotonic: a deleted user's id (u<port>) is never handed to someone else
   let p = Math.max(9501, settings.nextPort || 0, ...users.map(x => x.port + 1));
@@ -196,38 +180,16 @@ function allocPort() {
 }
 async function createInstance(name, port, alpw) {
   if (!SAFE_ID.test(name)) throw new Error('bad id');
-  const d = path.join(UROOT, name, 'data');
-  await run('useradd', ['--system', '--no-create-home', '--home-dir', path.join(UROOT, name), '--shell', '/usr/sbin/nologin', '--user-group', sysUser(name)]).catch(e => { if (!/already exists/.test(e.message)) throw e; });
-  fs.mkdirSync(path.join(d, 'app'), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(path.join(d, 'config.cjs'), `module.exports = {\n  port: '${port}',\n  bindIp: '127.0.0.1',\n  'upstreamProxy.enabled': true,\n  'upstreamProxy.header': 'x-real-ip',\n  allowPublicDir: ['/srv/music'],\n  password: '${alpw}'\n}\n`, { mode: 0o600 });
-  // copy app settings (extensions, LX sources, online search) but not playlists/play state
-  await run('cp', ['-a', path.join(ADMIN_DATA, 'app', 'extension'), path.join(d, 'app', 'extension')]);
-  stripClonedAccountSource(path.join(d, 'app', 'extension'));
-  try {
-    const c = JSON.parse(fs.readFileSync(path.join(ADMIN_DATA, 'app', 'config.json'), 'utf8'));
-    const out = {}; for (const k of Object.keys(c)) if (!SKIP_CFG.test(k) || k === 'player.playbackRate') out[k] = c[k];
-    out['player.playbackRate'] = 1;
-    // app settings live under .setting: new users start at normal speed and 50% volume (2026-10-11)
-    if (out.setting && typeof out.setting === 'object') { out.setting = { ...out.setting, 'player.playbackRate': 1, 'player.volume': 0.5, 'player.volumeMute': false, 'player.preservesPitch': false }; }
-    fs.writeFileSync(path.join(d, 'app', 'config.json'), JSON.stringify(out, null, '\t'));
-  } catch (e) { console.error('config copy', e.message); }
-  await run('chown', ['-R', sysUser(name) + ':' + sysUser(name), path.join(UROOT, name)]);
-  fs.chmodSync(path.join(UROOT, name), 0o700); fs.chmodSync(d, 0o700);
-  // the unit's ExecStartPre (install.py install %i --force) writes this user's own account-source script before start
-  await run('systemctl', ['enable', '--now', 'any-listen-u@' + name]);
+  await helper(['create', name, String(port)], alpw, 120000);
 }
 async function removeInstance(name) {
   if (!SAFE_ID.test(name)) return;
-  await run('systemctl', ['disable', '--now', 'any-listen-u@' + name]).catch(() => {});
-  fs.rmSync(path.join(UROOT, name), { recursive: true, force: true });
-  // drop this id's account-source record + saved platform logins (al-accsrc reloads config automatically)
-  if (fs.existsSync(ACC_INSTALL)) await run('python3', [ACC_INSTALL, 'purge', name]).catch(e => console.error('accsrc purge', name, e.message));
-  await run('userdel', [sysUser(name)]).catch(() => {});
+  await helper(['remove', name], null, 120000);
 }
 const sendAdmin = (res, me, html) => send(res, 200, html.replace(/(<form method="post"[^>]*>)/g, `$1<input type="hidden" name="_csrf" value="${csrfTok(me)}">`));
 async function adminPage(req, res, me, msg = '', err = '') {
   let mem = ''; try { mem = (await run('free', ['-m'])).split('\n')[1].trim().split(/\s+/); mem = `可用内存 ${mem[6]} MB / ${mem[1]} MB`; } catch (e) {}
-  const up = {}; for (const u of users) up[u.name] = await portUp(u.port);
+  const up = {}; await Promise.all(users.map(async u => { up[u.name] = await portUp(u.port); }));
   const nUsers = users.filter(u => u.role !== 'admin').length;
   const rows = users.map(u => `<tr><td data-l="用户">${esc(dn(u))}${dn(u) !== u.name ? `<div class="tip" style="margin:0">${esc(u.name)}</div>` : ''}</td><td data-l="身份" class="em">${u.role === 'admin' ? '管理员' : (u.email ? esc(u.email) : '用户（已停用）')}</td><td data-l="状态">${up[u.name] ? '运行中' : '休眠'}</td><td data-l="操作" class="ops">${u === me ? '' : `<form method="post" action="/__gw/admin/kick" style="display:inline" onsubmit="return confirm('把 ${esc(dn(u))} 踢下线？他需要重新登录才能继续使用')"><input type="hidden" name="u" value="${esc(u.name)}"><button class="del" style="background:#f0a020">踢下线</button></form>`}${u.role === 'admin' ? '' : ` <form method="post" action="/__gw/admin/del" style="display:inline" onsubmit="return confirm('删除用户 ${esc(dn(u))}？他的歌单和播放记录会一并删除，无法恢复')"><input type="hidden" name="u" value="${esc(u.name)}"><button class="del">删除</button></form>`}</td></tr>`).join('');
   sendAdmin(res, me, page('用户管理', `<h1>用户管理</h1>${msg ? `<div class="ok">${esc(msg)}</div>` : ''}${err ? `<div class="err">${esc(err)}</div>` : ''}<div class="tip" style="margin:0 0 12px">登录使用 Cloudflare Access（邮箱验证码、Google 或 GitHub）。管理员：${esc(ADMIN_EMAILS.join('、'))}；白名单里的其他邮箱首次登录时自己设置用户名。</div><table class="ut"><tr><th>用户</th><th>身份</th><th>状态</th><th>操作</th></tr>${rows}</table>
@@ -272,7 +234,8 @@ const server = http.createServer(async (req, res) => {
         if (url.pathname === '/__gw/register' && req.method === 'POST') {
           const n = String((await readBody(req)).get('u') || '').trim(), e = nameErr(n);
           if (e) return send(res, 200, regPage(e, n));
-          if (users.some(x => String(x.email || '').toLowerCase() === req._email)) return send(res, 302, '', { Location: '/' });
+          if (regBusy.has(req._email) || users.some(x => String(x.email || '').toLowerCase() === req._email)) return send(res, 302, '', { Location: '/' });
+          regBusy.add(req._email); setTimeout(() => regBusy.delete(req._email), 130e3);
           const port = allocPort(), id = 'u' + port, alpw = crypto.randomBytes(12).toString('hex');
           const nu = { name: id, display: n, role: 'user', port, email: req._email, ver: 0, alpw, created: new Date().toISOString() };
           users.push(nu); saveUsers(); touch({ name: id });
@@ -298,7 +261,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, JSON.stringify({ ok: true, name: n }), { 'Content-Type': 'application/json' });
     }
     // per-user emoji covers for 主页 list cards (2026-10-11): me.covers {listId: emoji}; emoji only, never images
-    if (url.pathname === '/__gw/daily') return send(res, 200, JSON.stringify(dailyFor(me)), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    if (url.pathname === '/__gw/daily') return send(res, 200, JSON.stringify(await dailyFor(me)), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     if (url.pathname === '/__gw/covers' && req.method === 'GET') return send(res, 200, JSON.stringify(me.covers || {}), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     if (url.pathname === '/__gw/covers' && req.method === 'POST' && req.headers['x-al'] === '1') {
       const b = await readBody(req), id = String(b.get('id') || ''), e = String(b.get('e') || '').trim();
@@ -350,7 +313,7 @@ const server = http.createServer(async (req, res) => {
           if (!u || u === me) return adminPage(req, res, me, '', '不能踢这个用户');
           const t = Math.floor(Date.now() / 1000) + 1; u.minIat = t; u.kicked = t; delete u.keepSig; saveUsers();
           const n = dropSockets(u.name);
-          if (u.role !== 'admin') run('systemctl', ['stop', unitOf(u)]).catch(() => {});
+          if (u.role !== 'admin') helper(['stop', u.role === 'admin' ? 'admin' : u.name]).catch(() => {});
           return adminPage(req, res, me, `已把 ${name} 踢下线${n ? `（断开 ${n} 个连接）` : ''}，他需要重新登录`);
         }
         if (url.pathname === '/__gw/admin/push') {
