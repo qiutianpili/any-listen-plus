@@ -1,9 +1,10 @@
 {
  "indexBzjGy48v.js": {
   "sha256_original": "d8fa16e472c42b2c69f0014e434561e8328aae6f8034525cff263d82b735d0d2",
-  "sha256_patched": "ac8c04b40d1cf447c5c5ce7ac5e7c2d6634d990675411f103868dd440e843ab8",
+  "sha256_patched": "653d3251e1cd80c5c60b50b2d65e053cb3055595a7f9c297939c0efe0c742444",
   "sha256_previous": [
-   "fcf7807c62732e3c5dfd83b9cb49a024e5229d6f59d5678740b0c49d320e48d9"
+   "fcf7807c62732e3c5dfd83b9cb49a024e5229d6f59d5678740b0c49d320e48d9",
+   "ac8c04b40d1cf447c5c5ce7ac5e7c2d6634d990675411f103868dd440e843ab8"
   ],
   "hunks": [
    {
@@ -11,16 +12,72 @@
     "replace": "ipboardWriteText(e)},Fn=async()=>q.getLoginDevices(),In=async e=>q.removeLoginDevice(e),__alDevX=(window.__alDev={list:()=>q.getLoginDevices(),rm:e=>q.removeLoginDevice(e)}),Ln=async e=>q.openUrl(e),Rn=async()=>q.getCurrentVersionInfo(),zn=async()=>q.checkUpdate(),Bn=async()=>q.downloadUpdate(),Vn=async()=>q.restartUpdate(),Hn=async()=>q.getCacheSize(),Un=async()=>q.clearCache(),Wn=async(e,t)=>q.exportData(e,t),Gn=async(e,t,n)=>q.importData(e,t,n),Kn=async e=>q.getAppLogs(e),qn=async e=>q.clearAppLog(e),Jn=e=>{let t=Math.trunc((Da"
    },
    {
+    "find": "sChanged(e)},Pi=e=>{K.resourceList=e,an.",
+    "replace": "sChanged(e)},Pi=e=>{e=(r=>{const O=[\"tx\",\"wy\",\"kg\",\"kw\",\"mg\",\"gd-netease\"],k=x=>{const i=O.indexOf(x.id);return i<0?99:i};if(r&&r.resources){const n={...r.resources};for(const t of[\"musicSearch\",\"songlistSearch\"])Array.isArray(n[t])&&(n[t]=n[t].map((x,i)=>[x,i]).sort((a,b)=>k(a[0])-k(b[0])||a[1]-b[1]).map(x=>x[0]));r={...r,resources:n}}return r})(e);K.resourceList=e,an."
+   },
+   {
     "find": "rsionInfoUpdated(e)},Li=async()=>q.getExtensionErrorMessage(),Ri=async()=>q.getExtensionList(),zi=async e=>q.getOnlineExtensionList(e),Bi=async e=>q.getOnlineExtensionDetail(e),Vi=async(e,t)=>q.downloadAndParseExtension(e,t),Hi=async e=>q.installExtension(e),Ui=async e=>q.updateExtension(e),Wi=async e=>q.enableExtension(e),Gi=async e=>q.disableExtension(e),Ki=async e=>q.uninstallExtension(e),qi=async()=>q.getResourceList(),Ji=async()=>q.getNewVersionInfo(),Yi=async()=>q.getAllExtensionSettings(),Xi=async(e,t)=>q.updateExtensionSettings(e,t),Zi=async e=>q.getExtensionLastLogs(e),Qi=async e=>q.clearExtensionLogs(e),$i=()=>Fr.on(e=>{switch(console.log(`",
     "replace": "rsionInfoUpdated(e)},Li=async()=>q.getExtensionErrorMessage(),Ri=async()=>q.getExtensionList(),zi=async e=>q.getOnlineExtensionList(e),Bi=async e=>q.getOnlineExtensionDetail(e),Vi=async(e,t)=>q.downloadAndParseExtension(e,t),Hi=async e=>q.installExtension(e),Ui=async e=>q.updateExtension(e),Wi=async e=>q.enableExtension(e),Gi=async e=>q.disableExtension(e),Ki=async e=>q.uninstallExtension(e),qi=async()=>q.getResourceList(),Ji=async()=>q.getNewVersionInfo(),Yi=async()=>q.getAllExtensionSettings(),Xi=(window.__alExtSet=async(e,t)=>q.updateExtensionSettings(e,t)),Zi=async e=>q.getExtensionLastLogs(e),Qi=async e=>q.clearExtensionLogs(e),$i=()=>Fr.on(e=>{switch(console.log(`"
    },
    {
-    "find": ".all([Yc(),zf([])])},Qd=async(e,t,n,r=!1)=>Zd(e,`local`,t,n,r),$d=async(e,t,n)=>{switch(t){case`songl",
-    "replace": ".all([Yc(),zf([])])},Qd=async(e,t,n,r=!1)=>Zd(e,`local`,t,n,r),__alLibX=(window.__alLib={lists:()=>[{id:Y.lastPlayList.id,name:`播放历史`},{id:Y.loveList.id,name:`我喜欢`},{id:Y.defaultList.id,name:`试听列表`},...Y.userLists.map(e=>({id:e.id,name:e.name,type:e.type}))],musics:e=>bs(e),play:(e,t,n)=>Qd(e,t,n),hist:(n,a)=>__alHist(n,a),search:e=>ti(e),act:e=>ws(e),ul:()=>Y.userLists}),$d=async(e,t,n)=>{switch(t){case`songl"
+    "find": "ray.from(t)),Go(!0)},qo=e=>(Y.userLists=e,Zo(),e),Jo=(e,t)=>(Y.allMusicList.set(e,t),t),Yo=()=>[Y.defaultList,Y.loveList,Y.lastPlayList,...Y.userLists],Xo=()=>{Y.userLists=Array.fr",
+    "replace": "ray.from(t)),Go(!0)},qo=e=>(Y.userLists=e,Zo(),e),Jo=(e,t)=>(Y.allMusicList.set(e,t),window.__alLCput&&window.__alLCput(e,t),t),Yo=()=>[Y.defaultList,Y.loveList,Y.lastPlayList,...Y.userLists],Xo=()=>{Y.userLists=Array.fr"
    },
    {
-    "find": "<0||tf(e,t,o,r,i,a)},sp=async(e,t,n,r,i,a)=>{if(r===`local`)await",
-    "replace": "<0||tf(e,t,o,r,i,a)},__alHist=async(n,a)=>{try{let L=w.LAST_PLAYED,top=J.setting[`list.addMusicLocationType`]!=`bottom`,l=await Qs(L,!0),i=l.findIndex(e=>e.id==n.id);if(i<0)await ws({action:`list_music_add`,data:{id:L,addMusicLocationType:top?`top`:`bottom`,musicInfos:[{...n,meta:{...n.meta,createTime:Date.now()}}]}});else if(i!=(top?0:l.length-1))await ws({action:`list_music_update_position`,data:{listId:L,position:top?0:l.length-1,ids:[n.id]}});l=await Qs(L,!0);i=l.findIndex(e=>e.id==n.id);if(i<0)return!1;await Qd(L,l,i,a);return!0}catch(e){console.error(`alHist`,e);return!1}},sp=async(e,t,n,r,i,a)=>{if(r===`search`&&n&&await __alHist(n,a))return;if(r===`local`)await"
+    "find": "{err:e.message})),e})):[],$s=async(e,t)=>xs(e,t),ec=async e=>Cs(e),tc,nc={},rc=async()=>{tc||=",
+    "replace": "{err:e.message})),e})):[],__alLCx=(window.__alLib2={Y,Ho,Qs}),$s=async(e,t)=>xs(e,t),ec=async e=>Cs(e),tc,nc={},rc=async()=>{tc||="
+   },
+   {
+    "find": "eed)},bu=!0,xu=()=>{bu||(console.log(`connect Node`),Pl?.connect(Il.get(`hz${Fl[0]}`)),bu=!0,Yl==1&&Jl==`connected`&&wu())},Su=()=>{bu&&(console.log(`disconnect Node`),Pl?.disconnect(),bu=!1,Yl==1&&Jl==`connected`&&wu())},Cu=()=>{console.log",
+    "replace": "eed)},bu=!0,xu=()=>{bu||(console.log(`connect Node`),bu=!0,Yl==1&&Jl==`connected`&&wu())},Su=()=>{bu&&(console.log(`disconnect Node`),/* 2026-10-19: keep graph connected on pause/waiting (abrupt disconnect+reconnect popped/crackled on resume) */bu=!1,Yl==1&&Jl==`connected`&&wu())},Cu=()=>{console.log"
+   },
+   {
+    "find": "se`unconnect`:Cu()}},Du=e=>{Q&&(e=Re(e,J.setting[`network.proxyAllResources`],pa.proxyServerHost),Q.src=e)},Ou=()=>{Q?.play()},ku=()=>{Q?.pause()},Au=()=>{Q&&(Q.src=``,Q.removeAttribute(`src`))},ju=()=>!Q?.src,Mu=()=>Q?.src,Nu=()=>Q?.defaultPlaybackRate??1,Pu=e=>{Q&&(Q.defaultPlaybac",
+    "replace": "se`unconnect`:Cu()}},__alF=(()=>{let F={base:1,f:1,ps:!1,tm:0},to=1,f0=1,t0=0,cb=null;const D=500,ap=()=>{Q&&(Q.volume=Math.max(0,Math.min(1,F.base*F.f)))},st=()=>{F.tm&&(clearInterval(F.tm),F.tm=0),cb=null},hk=()=>{Q&&!Q.__alF&&(Q.__alF=1,Q.addEventListener(`playing`,()=>{!F.ps&&F.f<1&&!(F.tm&&to===0)&&F.ramp(1)}))};F.ramp=(t,c)=>{st();if(document.hidden){F.f=t,ap(),c&&c();return}f0=F.f,to=t,t0=performance.now(),cb=c||null,F.tm=setInterval(()=>{let k=Math.min(1,(performance.now()-t0)/D);F.f=f0+(to-f0)*k,ap();if(k>=1){let c2=cb;st(),c2&&c2()}},16)};F.vol=v=>{F.base=v,ap()};F.play=()=>{if(!Q||F.ps)return;hk();if(Q.paused){st(),F.f=0,ap();let p=Q.play();p&&p.catch&&p.catch(()=>{});return p}F.ramp(1)};F.pause=()=>{if(!Q)return;hk();if(Q.paused||document.hidden){st(),Q.pause();return}let a=Q;F.ramp(0,()=>{a.pause()})};F.stop=()=>{if(!Q)return;hk();let a=Q,r=()=>{F.ps=!1,a.src=``,a.removeAttribute(`src`)};if(a.paused||document.hidden||!a.src){st(),r();return}F.ps=!0,F.ramp(0,()=>{F.ps&&r()})};F.res=e=>{if(!Q)return;hk(),st(),F.ps=!1,F.f=0,ap(),Q.src=e};return window.__alFade=F})(),Du=e=>{Q&&(e=Re(e,J.setting[`network.proxyAllResources`],pa.proxyServerHost),__alF.res(e))},Ou=()=>{__alF.play()},ku=()=>{__alF.pause()},Au=()=>{__alF.stop()},ju=()=>__alF.ps||!Q?.src,Mu=()=>__alF.ps?``:Q?.src,Nu=()=>Q?.defaultPlaybackRate??1,Pu=e=>{Q&&(Q.defaultPlaybac"
+   },
+   {
+    "find": "ait su(e)))},Bu=e=>{Q&&(Q.volume=e)},Vu=()=>Q?.duration?",
+    "replace": "ait su(e)))},Bu=e=>{Q&&__alF.vol(e)},Vu=()=>Q?.duration?"
+   },
+   {
+    "find": "audio not defined`);return Q.addEventListener(`timeupdate`,e),()=>{Q?.removeEventListener(`timeupdate`,e)}},Zu=e=>{if(!Q)throw",
+    "replace": "audio not defined`);let w=t=>{__alF.ps||e(t)};return Q.addEventListener(`timeupdate`,w),()=>{Q?.removeEventListener(`timeupdate`,w)}},Zu=e=>{if(!Q)throw"
+   },
+   {
+    "find": "d;ku();let o=n[r],s;if(a==e?Z.playInfo.isLinkedList&&(s=Z.playList.find(e=>!e.playLater&&e.musicInfo.id==o.id),Yd(s,r)):gc(e,t),s==null){let i=xe({musicInfos",
+    "replace": "d;ku();let o=n[r],s;if(a==e?Z.playInfo.isLinkedList&&(s=Z.playList.find(e=>!e.playLater&&e.musicInfo.id==o.id),s&&Yd(s,r)):gc(e,t),s==null){let i=xe({musicInfos"
+   },
+   {
+    "find": "o.id==o.id),Yd(s,r)}xc(!0),Xd(),(J.setting[`player.isAutoCleanPlayedList`]||a!=e||i)&&await Promise.all([Yc(),zf([])])},Qd=async(e,t,n,r=!1)=>Zd(e,`local`,t,n,r),$d=async(e,t,n)=>{switch(t){case`songl",
+    "replace": "o.id==o.id),Yd(s,r)}xc(!0),Xd();(J.setting[`player.isAutoCleanPlayedList`]||a!=e||i)&&await Promise.all([Yc(),zf([])])},Qd=async(e,t,n,r=!1)=>Zd(e,`local`,t,n,r),__alLibX=(window.__alLib={lists:()=>[{id:Y.lastPlayList.id,name:`播放历史`},{id:Y.loveList.id,name:`我喜欢`},{id:Y.defaultList.id,name:`试听列表`},...Y.userLists.map(e=>({id:e.id,name:e.name,type:e.type}))],musics:e=>bs(e),play:(e,t,n)=>Qd(e,t,n),hist:(n,a)=>__alHist(n,a),search:e=>ti(e),act:e=>ws(e),ul:()=>Y.userLists,sync:e=>Os(e),sld:e=>oi(e),tip:e=>Dr(e),sp:(...a)=>sp(...a)}),$d=async(e,t,n)=>{switch(t){case`songl"
+   },
+   {
+    "find": "usicInfo])},vf=()=>{Z.playMusicInfo&&Js(w.LOVE,[Z.playMusicInfo.musicInfo.id])},yf=async()=>{if(!Z.",
+    "replace": "usicInfo])},vf=()=>{if(Z.playMusicInfo){window.__alKeepCur=1;try{Js(w.LOVE,[Z.playMusicInfo.musicInfo.id])}finally{window.__alKeepCur=0}}},yf=async()=>{if(!Z."
+   },
+   {
+    "find": "ion:0,currentTime:0},Rf=async e=>{let t=`${e.musicInfo",
+    "replace": "ion:0,currentTime:0},__alUC=new Map,Rf=async e=>{let t=`${e.musicInfo"
+   },
+   {
+    "find": "ty}_${e.isRefresh}`;if(If.has(t))return ",
+    "replace": "ty}_${e.isRefresh}`;if(!e.isRefresh){let C=__alUC.get(t);if(C&&Date.now()-C.t<12e4)return C.v}if(If.has(t))return "
+   },
+   {
+    "find": "ic timeout`))},3e4);pl(e).then(t).catch(n).finally(()=>{r&&clearTimeout(r)})",
+    "replace": "ic timeout`))},3e4);pl(e).then(n=>{if(!e.isRefresh&&n&&n.url){__alUC.set(t,{v:n,t:Date.now()});if(__alUC.size>60)__alUC.delete(__alUC.keys().next().value)}return n}).then(t).catch(n).finally(()=>{r&&clearTimeout(r)})"
+   },
+   {
+    "find": "<0||tf(e,t,o,r,i,a)},sp=async(e,t,n,r,i,a)=>{if(r===`local`)await ap(e,n,a);else{if(!i)throw Err",
+    "replace": "<0||tf(e,t,o,r,i,a)},__alHist=async(n,a)=>{try{let L=w.LAST_PLAYED,top=J.setting[`list.addMusicLocationType`]!=`bottom`,l=await Qs(L),i=l.findIndex(e=>e.id==n.id),p=null;if(i<0){let m={...n,meta:{...n.meta,createTime:Date.now()}},r=l.filter(e=>e.id!=n.id);r=top?[m,...r]:[...r,m];p=ws({action:`list_music_add`,data:{id:L,addMusicLocationType:top?`top`:`bottom`,musicInfos:[m]}});p=p.catch(e=>console.error(`alHist add`,e));await Qd(L,r,top?0:r.length-1,a);await p;return!0}i!=(top?0:l.length-1)&&(p=ws({action:`list_music_update_position`,data:{listId:L,position:top?0:l.length-1,ids:[n.id]}}).catch(e=>console.error(`alHist pos`,e)));await Qd(L,l,i,a);p&&await p;return!0}catch(e){console.error(`alHist`,e);return!1}},__alSpK=``,__alSpT=0,__alSeq=0,__alRun=Promise.resolve(),__alPre=e=>{try{e&&Rf({musicInfo:e,isRefresh:!1}).catch(()=>{})}catch(t){}},sp=async(e,t,n,r,i,a)=>{if(n){let k=r+`|`+n.id,T=performance.now();if(__alSpK===k&&T-__alSpT<1e3)return;__alSpK=k,__alSpT=T,__alPre(n)}let my=++__alSeq,prev=__alRun,dn;__alRun=new Promise(r=>dn=r);try{my>1&&ku();await Promise.race([prev,new Promise(r=>setTimeout(r,5e3))]);if(my!==__alSeq)return;await __alSp0(e,t,n,r,i,a)}finally{dn()}},__alSp0=async(e,t,n,r,i,a)=>{if(r===`search`&&n&&a!==!0&&await __alHist(n,a))return;/* 2026-10-19: play-all / play-random (6th arg true) keep the whole search list */if(r===`local`)await ap(e,n,a);else{if(!i)throw Err"
+   },
+   {
+    "find": "w()-cp>400||lp!==n){cp=window.performance.now(),lp=n;return}cp=0,lp=null,",
+    "replace": "w()-cp>400||lp!==n){cp=window.performance.now(),lp=n,__alPre(n);return}cp=0,lp=null,"
+   },
+   {
+    "find": "(()=>{let t=i().mid;e&&Promise.all([Qs(e),ac(e)]).then(([n,r])=>{z(l,n),A().then(()=>{let i=-1;t&&(i=n.fin",
+    "replace": "(()=>{let t=i().mid;if(!e)return;let c0=Y.allMusicList.get(e)||window.__alLC&&window.__alLC.peek(e)||null,sc=!1;z(l,c0||[]);if(c0&&!t&&tc){let r0=tc[e]??0;sc=!0;A().then(()=>{y===e&&O(u)?.setScrollPosition(r0)})}Promise.all([Qs(e),ac(e)]).then(([n,r])=>{if(y!==e)return;if(n===c0&&sc)return;z(l,n);if(sc&&!t)return;A().then(()=>{let i=-1;t&&(i=n.fin"
    },
    {
     "find": ",Math.round(e)/100)},l=e=>{Fb.exec(`player.setPlaybackRate`,Math.round(s.val*100+-e.deltaY/100)/100)},u=e=>{kl({\"player.p",
@@ -32,7 +89,19 @@
    },
    {
     "find": "(),o(),s(),c(),u()}},Bw=()=>Lu()*1e3,Vw=()=>{Fw(Bw())},Hw=()=>{Iw()},Uw=()=>{Lw()},",
-    "replace": "(),o(),s(),c(),u()}},Bw=()=>Lu()*1e3-(window.__alLat?.()||0),Vw=()=>{Fw(Bw())},__alPlX=(window.__alPl={seek:e=>Fb.exec(`player.seekTo`,e),info:()=>Z.musicInfo,vol:()=>Z.volume,mute:()=>Z.volumeMute,rate:()=>Z.playbackRate,exec:(c,...a)=>Fb.exec(c,...a),detail:e=>fb(!!e),shown:()=>!!db.isShowPlayDetail,pause:()=>{X.pause(),xc(!1)},stopAfter:e=>Nc(!!e),stopFlag:()=>Z.isPlayedStop,playing:()=>!!Z.playing,progress:()=>Z.progress,id:()=>Z.musicInfo&&Z.musicInfo.id,audio:()=>{try{return Q}catch(e){return null}}}),__alLrcX=(window.__alLrc={sync:()=>Vw(),off:()=>Tw?.linePlayer?._getOffsetTime?.()||0,cur:()=>Tw?.linePlayer?._rawCurrentTime?.(),playing:()=>!!(Z.playing&&Tw?.linePlayer?.isPlay),t:()=>Bw()}),Hw=()=>{Iw()},Uw=()=>{Lw()},"
+    "replace": "(),o(),s(),c(),u()}},Bw=()=>Lu()*1e3-(window.__alLat?.()||0),Vw=()=>{Fw(Bw())},__alPlX=(window.__alPl={seek:e=>Fb.exec(`player.seekTo`,e),info:()=>Z.musicInfo,vol:()=>Z.volume,mute:()=>Z.volumeMute,rate:()=>Z.playbackRate,exec:(c,...a)=>Fb.exec(c,...a),detail:e=>fb(!!e),shown:()=>!!db.isShowPlayDetail,pause:()=>{X.pause(),xc(!1)},stopAfter:e=>Nc(!!e),stopFlag:()=>Z.isPlayedStop,playing:()=>!!Z.playing,progress:()=>Z.progress,id:()=>Z.musicInfo&&Z.musicInfo.id,audio:()=>{try{return Q}catch(e){return null}},pmode:()=>J.setting[`player.togglePlayMethod`],setPmode:e=>kl({\"player.togglePlayMethod\":e}),queue:()=>Z.playList,cur:()=>Z.playMusicInfo&&Z.playMusicInfo.itemId,playItem:e=>{let t=Z.playList.find(x=>x.itemId==e);t&&lf(t)},loved:()=>!!Z.musicInfo.collect,love:e=>e?_f():vf()}),__alLrcX=(window.__alLrc={sync:()=>Vw(),off:()=>Tw?.linePlayer?._getOffsetTime?.()||0,cur:()=>Tw?.linePlayer?._rawCurrentTime?.(),playing:()=>!!(Z.playing&&Tw?.linePlayer?.isPlay),t:()=>Bw()}),Hw=()=>{Iw()},Uw=()=>{Lw()},"
+   },
+   {
+    "find": "backRate\"(e){Eu(e)}},gE=Qn(),_E=()=>{mt(gE.clear.bind(gE)",
+    "replace": "backRate\"(e){Eu(e)}},gE=Qn(),__alSE={},_E=()=>{mt(gE.clear.bind(gE)"
+   },
+   {
+    "find": "n(`updated`,(e,t)=>{for(let n of e)n.startsWith(`player.soundEffect.`)&&hE[n](t[n])}))}),mE()})},vE=0,yE=0,bE=!1,x",
+    "replace": "n(`updated`,(e,t)=>{for(let n of e)n.startsWith(`player.soundEffect.`)&&hE[n]&&JSON.stringify(t[n])!==JSON.stringify(__alSE[n])&&(__alSE[n]=t[n],hE[n](t[n]))}))}),(()=>{/* 2026-10-19: settings re-sync on every ws reconnect re-fired all sound-effect handlers (EQ 0 / pitch 1) and routed playback through the full WebAudio graph + phase-vocoder worklet -> crackle/stutter on phones; only apply real changes */for(let k in J.setting)k.startsWith(`player.soundEffect.`)&&(__alSE[k]=J.setting[k])})(),mE()})},vE=0,yE=0,bE=!1,x"
+   },
+   {
+    "find": "ovedBefore`,(e,t)=>{Z.playMusicInfo&&e==Z.playMusicInfo.listId&&t.includes(Z.playMusicInfo.musicInfo.id)&&(console.log(`current music removed by listMusicRemovedBefore`),uf(!0))})),e.add(_r(`player.",
+    "replace": "ovedBefore`,(e,t)=>{Z.playMusicInfo&&!window.__alKeepCur&&e==Z.playMusicInfo.listId&&t.includes(Z.playMusicInfo.musicInfo.id)&&(console.log(`current music removed by listMusicRemovedBefore`),uf(!0))})),e.add(_r(`player."
    }
   ]
  },
@@ -70,11 +139,14 @@
  },
  "lx-api-source-loader_0.1.7/main.js": {
   "sha256_original": "560edf13dbe6ecbe41e5983cd3444ef3a6c19266af3ad7a7ac93c126a1bdcf72",
-  "sha256_patched": "65f38233b7753da068125d64d56a3ddd613b46f7e55841028f59e437ca5d1b86",
+  "sha256_patched": "b29ea40ee1883ff1638cf342a4dcadf2fd42ef27c30db0117adbd3a376469c00",
+  "sha256_previous": [
+   "65f38233b7753da068125d64d56a3ddd613b46f7e55841028f59e437ca5d1b86"
+  ],
   "hunks": [
    {
     "find": "], excludeIds);\n\t};\n\tvar getMusicUrl = async (musicInfo, type, excludeIds = []) => {\n\t\tconst [targetScript, targetType] = getTargetScriptByQuality(musicInfo, type, excludeIds);\n\t\treturn targetScript.getMusicUrl(musicInfo, targetType).then(async (url) => {\n\t\t\turl = await verifyUrl(url);\n\t\t\treturn url;\n\t\t}).catch(async (error) => {\n\t\t\tconsole.error(`[${targetScript.info.name || targetScript.info.fileName} - ${musicInfo.name}",
-    "replace": "], excludeIds);\n\t};\n\t/* hedged source race (2026-10-12): try sources in the user's order, but start the next one if the current\n\t   hasn't answered within HEDGE ms (or right away when it fails); first verified URL wins. Each attempt is capped at\n\t   ATTEMPT ms. Sources that just failed are moved to the back for COOL ms (circuit breaker), not removed. */\n\tvar HEDGE = 2500, ATTEMPT = 9000, COOL = 10 * 60e3, coolUntil = new Map();\n\tvar withTimeout = (p, ms, label) => new Promise((resolve, reject) => {\n\t\tconst t = setTimeout(() => reject(new Error(`timeout ${ms}ms (${label})`)), ms);\n\t\tp.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });\n\t});\n\tvar getMusicUrl = async (musicInfo, type) => {\n\t\tconst [orderInfos = []] = await configuration.getConfigs([\"importedScriptSources\"]);\n\t\tconst ord = orderInfos.map((i) => i.id);\n\t\tscripts.sort((x, y) => ord.indexOf(x.id) - ord.indexOf(y.id));\n\t\tconst cands = [], ex = [];\n\t\tfor (;;) {\n\t\t\tlet c;\n\t\t\ttry { c = getTargetScriptByQuality(musicInfo, type, ex); } catch { break; }\n\t\t\tcands.push(c); ex.push(c[0].id);\n\t\t}\n\t\tif (!cands.length) throw new Error(\"No script found to handle this request\");\n\t\tconst now = Date.now(), hot = (c) => (coolUntil.get(c[0].id) || 0) > now;\n\t\tcands.sort((a, b) => hot(a) - hot(b));\n\t\treturn new Promise((resolve, reject) => {\n\t\t\tlet i = 0, failed = 0, done = false, timer = null;\n\t\t\tconst next = () => {\n\t\t\t\tif (done || i >= cands.length) return;\n\t\t\t\tclearTimeout(timer);\n\t\t\t\tconst [sc, tp] = cands[i++];\n\t\t\t\tconst name = sc.info.name || sc.info.fileName;\n\t\t\t\twithTimeout(Promise.resolve().then(() => sc.getMusicUrl(musicInfo, tp)).then((u) => verifyUrl(u, { timeout: 5000 })), ATTEMPT, name).then((url) => {\n\t\t\t\t\tcoolUntil.delete(sc.id);\n\t\t\t\t\tif (done) return;\n\t\t\t\t\tdone = true; clearTimeout(timer); resolve(url);\n\t\t\t\t}, (error) => {\n\t\t\t\t\tcoolUntil.set(sc.id, Date.now() + COOL);\n\t\t\t\t\tconsole.error(`[${name} - ${musicInfo.name}"
+    "replace": "], excludeIds);\n\t};\n\t/* hedged source race (2026-10-12): try sources in the user's order, but start the next one if the current\n\t   hasn't answered within HEDGE ms (or right away when it fails); first verified URL wins. Each attempt is capped at\n\t   ATTEMPT ms. Sources that just failed are moved to the back for COOL ms (circuit breaker), not removed. */\n\tvar HEDGE = 2500, ATTEMPT = 9000, COOL = 10 * 60e3, coolUntil = new Map();\n\tvar withTimeout = (p, ms, label) => new Promise((resolve, reject) => {\n\t\tconst t = setTimeout(() => reject(new Error(`timeout ${ms}ms (${label})`)), ms);\n\t\tp.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });\n\t});\n\tvar getMusicUrl = async (musicInfo, type) => {\n\t\tconst [orderInfos = []] = await configuration.getConfigs([\"importedScriptSources\"]);\n\t\tconst ord = orderInfos.map((i) => i.id);\n\t\tscripts.sort((x, y) => ord.indexOf(x.id) - ord.indexOf(y.id));\n\t\tconst cands = [], ex = [];\n\t\tfor (;;) {\n\t\t\tlet c;\n\t\t\ttry { c = getTargetScriptByQuality(musicInfo, type, ex); } catch { break; }\n\t\t\tcands.push(c); ex.push(c[0].id);\n\t\t}\n\t\tif (!cands.length) throw new Error(\"No script found to handle this request\");\n\t\tconst now = Date.now(), hot = (c) => (coolUntil.get(c[0].id) || 0) > now;\n\t\tcands.sort((a, b) => hot(a) - hot(b));\n\t\treturn new Promise((resolve, reject) => {\n\t\t\tlet i = 0, failed = 0, done = false, timer = null;\n\t\t\tconst next = () => {\n\t\t\t\tif (done || i >= cands.length) return;\n\t\t\t\tclearTimeout(timer);\n\t\t\t\tconst [sc, tp] = cands[i++];\n\t\t\t\tconst name = sc.info.name || sc.info.fileName;\n\t\t\t\twithTimeout(Promise.resolve().then(() => sc.getMusicUrl(musicInfo, tp)).then((u) => verifyUrl(u, { timeout: 5000 })), ATTEMPT, name).then((url) => {\n\t\t\t\t\tcoolUntil.delete(sc.id);\n\t\t\t\t\tif (done) return;\n\t\t\t\t\tdone = true; clearTimeout(timer); resolve(url);\n\t\t\t\t}, (error) => {\n\t\t\t\t\tif (!/\\[nocool\\]/.test(String(error && error.message))) coolUntil.set(sc.id, Date.now() + COOL); /* al-accsrc: account-source misses (not logged in / not entitled) do not demote */\n\t\t\t\t\tconsole.error(`[${name} - ${musicInfo.name}"
    },
    {
     "find": "ta.source}, type: ${targetType})] ${error.message}`);\n\t\t\treturn getMusicUrl(musicInfo, type, [...excludeIds, targetScript.id]);\n\t\t});\n\t};\n\tvar upda",
@@ -82,7 +154,7 @@
    },
    {
     "find": "quality}: ${url}`);\n\t\t\turl = await musicUtils.createProxyUrl(url, {}, (await configurat",
-    "replace": "quality}: ${url}`);\n\t\t\tif (/^https?:\\/\\/([\\w-]+\\.)*(music\\.126\\.net|stream\\.qqmusic\\.qq\\.com|kugou\\.com)\\//i.test(url)) url = url.replace(/^http:/i, \"https:\"); /* direct: CORS-enabled CN CDN, skip US VPS proxy (2026-10-09) */\n\t\t\telse url = await musicUtils.createProxyUrl(url, {}, (await configurat"
+    "replace": "quality}: ${url}`);\n\t\t\tif (/^https?:\\/\\/([\\w-]+\\.)*(music\\.126\\.net|stream\\.qqmusic\\.qq\\.com|kugou\\.com)\\//i.test(url) && !/^https?:\\/\\/fs\\.youthandroid\\d*\\.kugou\\.com\\//i.test(url)) /* al-accsrc: http-only host -> proxy */ url = url.replace(/^http:/i, \"https:\"); /* direct: CORS-enabled CN CDN, skip US VPS proxy (2026-10-09) */\n\t\t\telse url = await musicUtils.createProxyUrl(url, {}, (await configurat"
    },
    {
     "find": " [info.id, info]));\n\t\tfor (const id of config) {\n\t\t\tconst info = inf",
