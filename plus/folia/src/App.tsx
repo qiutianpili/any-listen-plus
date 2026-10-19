@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMotionValue, useMotionValueEvent, type MotionValue } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
-import { ChevronDown, Pause, Play, Settings2, SkipBack, SkipForward, Volume2, VolumeX, X, RotateCcw } from 'lucide-react';
+import { Heart, ChevronDown, Pause, Play, Settings2, SkipBack, SkipForward, Volume2, VolumeX, X, RotateCcw } from 'lucide-react';
 import VisualizerRenderer from '../folia-src/components/visualizer/VisualizerRenderer';
 import { VISUALIZER_REGISTRY, getVisualizerModeLabel, getVisualizerRegistryEntry } from '../folia-src/components/visualizer/registry';
 import { VISUALIZER_BACKGROUND_REGISTRY, getVisualizerBackgroundModeLabel, getVisualizerBackgroundRegistryEntry, DEFAULT_VISUALIZER_BACKGROUND_MODE } from '../folia-src/components/visualizer/backgrounds/registry';
@@ -27,6 +27,7 @@ import type { DualTheme, Line, Theme, VisualizerMode } from '../folia-src/types'
 import { PlayerBottomBarLayoutContext } from '../folia-src/components/floating-player/PlayerBottomBarLayoutContext';
 import { playerBottomBarLiveOffset } from '../folia-src/stores/motionSignals';
 import type { AlApi, AlSnapshot } from './api';
+import { PlayModeButton, QueuePanel, QueueIcon } from './Queue';
 
 const EMPTY_SPECTRUM = new Uint8Array(0);
 /** read by main.debug() for tests: lyric line count / active line / clock */
@@ -51,7 +52,7 @@ const fmt = (sec: number) => {
 
 const sameSnap = (a: AlSnapshot | null, b: AlSnapshot) => !!a && a.id === b.id && a.name === b.name && a.singer === b.singer
     && a.album === b.album && a.pic === b.pic && a.lrc === b.lrc && a.tlrc === b.tlrc && a.rlrc === b.rlrc && a.awlrc === b.awlrc
-    && a.playing === b.playing && Math.abs(a.duration - b.duration) < 0.5 && Math.abs(a.volume - b.volume) < 0.005 && a.muted === b.muted && a.rate === b.rate;
+    && a.playing === b.playing && Math.abs(a.duration - b.duration) < 0.5 && Math.abs(a.volume - b.volume) < 0.005 && a.muted === b.muted && a.rate === b.rate && a.playMode === b.playMode && a.loved === b.loved;
 
 const parseLyrics = (s: AlSnapshot | null): Line[] => {
     if (!s) return NO_LYRIC_LINES;
@@ -86,10 +87,22 @@ const Toggle: React.FC<{ label: string; desc?: string; value: boolean; onChange:
 const ProgressRow: React.FC<{ currentTime: MotionValue<number>; duration: number; api: AlApi }> = ({ currentTime, duration, api }) => {
     const [pos, setPos] = useState(() => currentTime.get());
     const last = useRef(0);
-    useMotionValueEvent(currentTime, 'change', (v) => { const n = performance.now(); if (n - last.current >= 250) { last.current = n; setPos(v); } });
+    // after a seek, hold the bar at the target until the player reports a time near it (no snap back to the old position)
+    const hold = useRef<{ v: number; t: number } | null>(null);
+    useMotionValueEvent(currentTime, 'change', (v) => {
+        const n = performance.now();
+        const h = hold.current;
+        if (h) { if (Math.abs(v - h.v) < 1.2 || n - h.t > 2500) hold.current = null; else return; }
+        if (n - last.current >= 250) { last.current = n; setPos(v); }
+    });
     const [scrub, setScrub] = useState<number | null>(null);
     const shownPos = scrub ?? pos;
-    const commit = (e: React.SyntheticEvent) => { const v = Number((e.target as HTMLInputElement).value); setScrub(null); api.seek(v); };
+    const commit = (e: React.SyntheticEvent) => {
+        const v = Number((e.target as HTMLInputElement).value);
+        if (!Number.isFinite(v)) return;
+        if (hold.current && Math.abs(hold.current.v - v) < 0.05 && performance.now() - hold.current.t < 300) { setScrub(null); return; } // pointerup + touchend twice
+        hold.current = { v, t: performance.now() }; last.current = 0; setPos(v); setScrub(null); api.seek(v);
+    };
     return (
         <div className="flex items-center gap-2 text-[11px] tabular-nums opacity-80">
             <span className="w-10 text-right">{fmt(shownPos)}</span>
@@ -219,6 +232,10 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
     // --- chrome visibility ---
     const [chrome, setChrome] = useState(true);
     const [panel, setPanel] = useState(false);
+    const [queueOpen, setQueueOpen] = useState(false);
+    const [toast, setToast] = useState<string | null>(null);
+    const toastTimer = useRef<number | undefined>(undefined);
+    const flash = useCallback((m: string) => { setToast(m); window.clearTimeout(toastTimer.current); toastTimer.current = window.setTimeout(() => setToast(null), 1400); }, []);
     const hideTimer = useRef(0);
     const overChrome = useRef(false);
     const poke = useCallback(() => {
@@ -229,7 +246,7 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
     }, [phone]);
     const chromeHover = { onPointerEnter: (e: React.PointerEvent) => { if (e.pointerType === 'mouse') overChrome.current = true; }, onPointerLeave: () => { overChrome.current = false; } };
     useEffect(() => { poke(); return () => window.clearTimeout(hideTimer.current); }, [poke]);
-    const chromeVisible = chrome || panel || !snap?.playing;
+    const chromeVisible = chrome || panel || queueOpen || !snap?.playing;
 
     // keyboard: space = play/pause, esc = close panel / detail
     useEffect(() => {
@@ -306,12 +323,13 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
     const entry = getVisualizerRegistryEntry(visualizerMode);
     const bgMode = backgroundConfig.mode ?? DEFAULT_VISUALIZER_BACKGROUND_MODE;
     const bgEntry = getVisualizerBackgroundRegistryEntry(bgMode);
-    const resetMode = () => entry.resetSettings?.({
+    // 2026-10-19: 默认 also resets the background settings
+    const resetMode = () => { try { bgEntry?.resetSettings?.(backgroundActions); } catch { /* ignore */ } return entry.resetSettings?.({
         resetClassicTuning: vs.handleResetClassicTuning, resetPartitaTuning: vs.handleResetPartitaTuning, resetFumeTuning: vs.handleResetFumeTuning,
         resetCladdaghTuning: vs.handleResetCladdaghTuning, resetCappellaTuning: vs.handleResetCappellaTuning, resetTiltTuning: vs.handleResetTiltTuning,
         resetDioramaTuning: vs.handleResetDioramaTuning, resetMonetTuning: vs.handleResetMonetTuning, resetPendoloTuning: vs.handleResetPendoloTuning,
         resetSonnetTuning: vs.handleResetSonnetTuning, resetTemperaTuning: vs.handleResetTemperaTuning, resetLumiereTuning: vs.handleResetLumiereTuning,
-    });
+    }); };
     const tr = (key: string, fb: string) => { const v = t(key); return !v || v === key ? fb : v; };
 
     const modeOptions = useMemo(() => VISUALIZER_REGISTRY.map(e => ({
@@ -332,6 +350,17 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
     }, []);
     const [coverOk, setCoverOk] = useState(true);
     useEffect(() => setCoverOk(true), [coverUrl]);
+    const hasQueue = useMemo(() => { try { return api.queue() != null; } catch { return false; } }, [api]);
+    const hasMode = !!snap?.playMode;
+    const [lovedLocal, setLovedLocal] = useState<boolean | null>(null);
+    const loveTimer = useRef<number | undefined>(undefined);
+    useEffect(() => { setLovedLocal(null); window.clearTimeout(loveTimer.current); }, [snap?.id]);
+    useEffect(() => { if (lovedLocal != null && !!snap?.loved === lovedLocal) { setLovedLocal(null); window.clearTimeout(loveTimer.current); } }, [snap?.loved, lovedLocal]);
+    const loved = lovedLocal ?? !!snap?.loved;
+    const toggleLove = () => {
+        if (!snap?.id) return; const v = !loved; setLovedLocal(v); api.setLoved(v); flash(v ? '已添加到「我喜欢」' : '已从「我喜欢」移除');
+        window.clearTimeout(loveTimer.current); loveTimer.current = window.setTimeout(() => setLovedLocal(null), 3000);
+    };
     const [vol, setVol] = useState<number | null>(null);
     const shownVol = vol ?? (snap?.volume ?? 1);
 
@@ -340,7 +369,7 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
             className="folia-root"
             style={{ backgroundColor: theme.backgroundColor, color: fg, ['--fal-fg' as string]: fg, ['--fal-bg' as string]: theme.backgroundColor }}
             onPointerMove={(e) => { if (e.pointerType === 'mouse') poke(); }}
-            onPointerDown={(e) => { if (e.pointerType !== 'mouse') { if (chrome && !panel && (e.target as HTMLElement).closest?.('.fal-chrome') == null) { setChrome(false); } else poke(); } }}
+            onPointerDown={(e) => { if (e.pointerType !== 'mouse') { if (chrome && !panel && !queueOpen && (e.target as HTMLElement).closest?.('.fal-chrome') == null) { setChrome(false); } else poke(); } }}
         >
             {/* own stacking context: modes put z-10/z-20 full-screen layers (Monet's poster) that would otherwise
                 sit above our chrome and swallow every tap on close / settings / play */}
@@ -413,12 +442,19 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
                             <div className="truncate text-xs opacity-60">{[snap?.singer, snap?.album].filter(Boolean).join(' · ')}</div>
                         </div>
                         <div className="flex shrink-0 items-center gap-1">
+                            {snap?.loved != null && (
+                                <button type="button" className={`fal-btn fal-heart ${phone ? 'h-9 w-9' : 'h-10 w-10'} ${loved ? 'on' : ''}`} title={loved ? '取消喜欢' : '喜欢'} aria-label={loved ? '取消喜欢' : '喜欢'} aria-pressed={loved} onClick={toggleLove}>
+                                    <Heart size={phone ? 18 : 19} fill={loved ? '#ff4d6d' : 'none'} color={loved ? '#ff4d6d' : 'currentColor'} />
+                                </button>
+                            )}
+                            {hasMode && <PlayModeButton api={api} mode={snap!.playMode} onNotice={flash} className={phone ? 'h-9 w-9' : 'mr-1 h-10 w-10'} size={phone ? 17 : 18} />}
                             <button type="button" className="fal-btn h-10 w-10" title="上一曲" aria-label="上一曲" onClick={() => api.prev()}><SkipBack size={20} fill="currentColor" /></button>
                             <button type="button" className="fal-btn h-12 w-12" title={playing ? '暂停' : '播放'} aria-label={playing ? '暂停' : '播放'} onClick={() => api.toggle()}
                                 style={{ backgroundColor: colorWithAlpha(fg, 0.14) }}>
                                 {playing ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" className="translate-x-[1px]" />}
                             </button>
                             <button type="button" className="fal-btn h-10 w-10" title="下一曲" aria-label="下一曲" onClick={() => api.next()}><SkipForward size={20} fill="currentColor" /></button>
+                            {hasQueue && <button type="button" className="fal-btn fal-q-in h-9 w-9" title="播放列表" aria-label="播放列表" onClick={() => setQueueOpen(o => !o)}><QueueIcon size={18} /></button>}
                             {!phone && (
                                 <div className="ml-2 hidden items-center gap-1 md:flex">
                                     <button type="button" className="fal-btn h-9 w-9" title={snap?.muted ? '取消静音' : '静音'} onClick={() => api.setMute(!snap?.muted)}>
@@ -435,6 +471,23 @@ export const FoliaAlApp: React.FC<{ api: AlApi }> = ({ api }) => {
                     <ProgressRow currentTime={currentTime} duration={duration} api={api} />
                 </div>
             </div>
+
+            {/* play queue: corner button (wide screens; narrow screens use the one inside the bar) */}
+            {hasQueue && (
+                <div className={`fal-chrome fal-q-corner absolute bottom-0 right-0 pb-[max(22px,env(safe-area-inset-bottom))] pr-5 ${chromeVisible ? '' : 'fal-hidden'}`} {...chromeHover}>
+                    <button type="button" className="fal-btn fal-glass h-11 w-11" title="播放列表" aria-label="播放列表" aria-expanded={queueOpen}
+                        onPointerDown={stop} onClick={() => setQueueOpen(o => !o)}
+                        style={queueOpen ? { backgroundColor: colorWithAlpha(fg, 0.22) } : undefined}>
+                        <QueueIcon size={19} />
+                    </button>
+                </div>
+            )}
+            {hasQueue && <QueuePanel api={api} open={queueOpen} onClose={() => setQueueOpen(false)} theme={theme} fg={fg} isDaylight={isDaylight} phone={phone}
+                songId={snap?.id ?? null} mode={snap?.playMode || ''} onNotice={flash} />}
+
+            {toast && (
+                <div className="fal-glass pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full px-4 py-2 text-xs" role="status">{toast}</div>
+            )}
 
             {notice && (
                 <div className="fal-glass pointer-events-none absolute left-1/2 top-16 max-w-[90%] -translate-x-1/2 rounded-full px-4 py-2 text-center text-xs" role="status"
