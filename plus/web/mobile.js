@@ -842,7 +842,7 @@
     seek:function(s){try{window.__alPl.seek(Math.max(0,+s||0))}catch(e){}},
     setVolume:function(v){exec('player.setVolume',Math.round(Math.max(0,Math.min(1,+v||0))*100)/100)},
     setMute:function(m){exec('player.setVolumeMute',!!m)},
-    close:function(){var P=window.__alPl;unmount();if(P&&P.detail){P.detail(false);return}var b=document.querySelector('.play-detail button.hide');if(b)b.click();else unmount()},
+    close:function(){var P=window.__alPl;unmount(true);if(P&&P.detail){P.detail(false);return}var b=document.querySelector('.play-detail button.hide');if(b)b.click();else unmount()},
     toOriginal:function(){setStyle('al')},
     setLoved:function(v){try{var P=window.__alPl;if(P.love)P.love(!!v)}catch(e){console.warn('[folia] love',e)}},
     setPlayMode:function(m){try{var P=window.__alPl;if(P.setPmode)P.setPmode(String(m))}catch(e){console.warn('[folia] mode',e)}},
@@ -865,11 +865,18 @@
       if(handle||failed||style()!=='folia'||!document.querySelector('.play-detail'))return;
       var z=parseInt(getComputedStyle(pd).zIndex,10);host.style.zIndex=String((z>0?z:10)+5);
       host.classList.remove('m-out');document.body.appendChild(host);
-      try{handle=m.mount(host,api)}catch(e){failed=true;warn('mount failed',e);host.remove();return}
+      try{handle=m.mount(host,api)}catch(e){failed=true;warn('mount failed',e);host.remove();document.documentElement.classList.remove('m-folia-on');return}
       document.documentElement.classList.add('m-folia-on');
-    }).catch(function(e){failed=true;loading=null;warn('bundle failed to load',e)});
+    }).catch(function(e){failed=true;loading=null;warn('bundle failed to load',e);document.documentElement.classList.remove('m-folia-on')});
   }
-  function unmount(){
+  /* each mode paints only its own page (2026-10-20): in Folia mode the original .play-detail stays hidden while it slides in
+     (m-folia-on is set before the Folia bundle resolves) and while it slides out after close (m-folia-hold until it is gone). */
+  var holdT=0;
+  function hold(){var d=document.documentElement,t0=Date.now();d.classList.add('m-folia-hold');clearInterval(holdT);
+    holdT=setInterval(function(){var pd=document.querySelector('.play-detail'),P=window.__alPl,shown=pd&&(!(P&&P.shown)||P.shown());
+      if(!pd||Date.now()-t0>1500||shown&&style()!=='folia'){clearInterval(holdT);d.classList.remove('m-folia-hold')}},80)}
+  function unmount(keep){
+    if(keep)hold();
     document.documentElement.classList.remove('m-folia-on');
     if(handle){var h=handle;handle=null;try{h.unmount()}catch(e){}}
     if(host&&host.parentNode)host.remove();
@@ -889,10 +896,11 @@
   function sync(){
     var pd=document.querySelector('.play-detail');
     var P=window.__alPl,shown=!(P&&P.shown)||P.shown();   /* hidden but still animating out: drop Folia right away */
-    if(!pd||!shown){if(handle||host&&host.parentNode)unmount();return}
+    if(!pd||!shown){if(handle||host&&host.parentNode||document.documentElement.classList.contains('m-folia-on'))unmount(style()==='folia');return}
     tog(pd);
-    if(style()==='folia'&&!failed){if(!hooks()){warn('bundle hooks missing (stale indexBzjGy48v.js?)');return}mount(pd)}
-    else if(handle||host&&host.parentNode)unmount();
+    if(style()==='folia'&&!failed){if(!hooks()){warn('bundle hooks missing (stale indexBzjGy48v.js?)');return}
+      var d=document.documentElement;if(d.classList.contains('m-folia-hold')){clearInterval(holdT);d.classList.remove('m-folia-hold')}d.classList.add('m-folia-on');mount(pd)}
+    else if(handle||host&&host.parentNode||document.documentElement.classList.contains('m-folia-on'))unmount();
   }
   window.__alFolia={style:style,set:setStyle,mod:function(){return mod},state:function(){return {style:style(),mounted:!!handle,failed:failed,loaded:!!mod,mode:mod&&mod.getMode?mod.getMode():null}}};
   if(window.__alObs)window.__alObs(sync);
