@@ -1,7 +1,10 @@
 {
  "indexBzjGy48v.js": {
   "sha256_original": "d8fa16e472c42b2c69f0014e434561e8328aae6f8034525cff263d82b735d0d2",
-  "sha256_patched": "e6400095108757af5c8c9ee5ad8f6f186ff8f3058b99114ec305fee2c7c99a8d",
+  "sha256_patched": "b44eb25b341aebea48346e37e34d889fa0f1f04b7596d428df925ac044990412",
+  "sha256_previous": [
+   "e6400095108757af5c8c9ee5ad8f6f186ff8f3058b99114ec305fee2c7c99a8d"
+  ],
   "hunks": [
    {
     "find": "ipboardWriteText(e)},Fn=async()=>q.getLoginDevices(),In=async e=>q.removeLoginDevice(e),Ln=async e=>q.openUrl(e),Rn=async()=>q.getCurrentVersionInfo(),zn=async()=>q.checkUpdate(),Bn=async()=>q.downloadUpdate(),Vn=async()=>q.restartUpdate(),Hn=async()=>q.getCacheSize(),Un=async()=>q.clearCache(),Wn=async(e,t)=>q.exportData(e,t),Gn=async(e,t,n)=>q.importData(e,t,n),Kn=async e=>q.getAppLogs(e),qn=async e=>q.clearAppLog(e),Jn=e=>{let t=Math.trunc((Da",
@@ -22,6 +25,10 @@
    {
     "find": "{err:e.message})),e})):[],$s=async(e,t)=>xs(e,t),ec=async e=>Cs(e),tc,nc={},rc=async()=>{tc||=",
     "replace": "{err:e.message})),e})):[],__alLCx=(window.__alLib2={Y,Ho,Qs}),$s=async(e,t)=>xs(e,t),ec=async e=>Cs(e),tc,nc={},rc=async()=>{tc||="
+   },
+   {
+    "find": "removeMusicLyric(e)},bl=async()=>q.getMusicLyricCount(),xl=async()=>q.clearMusicLyric(),Sl=async e=>q.createLocalMusicInfos(e),Cl=new lt,wl=new lt,Tl={lines:[],text:``,lin",
+    "replace": "removeMusicLyric(e)},bl=async()=>q.getMusicLyricCount(),xl=async()=>q.clearMusicLyric(),__alDLx=(window.__alDL={url:(m,q,f)=>pl({musicInfo:m,quality:q,isRefresh:!!f}),lrc:m=>_l({musicInfo:m}),pic:m=>gl({musicInfo:m})}),Sl=async e=>q.createLocalMusicInfos(e),Cl=new lt,wl=new lt,Tl={lines:[],text:``,lin"
    },
    {
     "find": "eed)},bu=!0,xu=()=>{bu||(console.log(`connect Node`),Pl?.connect(Il.get(`hz${Fl[0]}`)),bu=!0,Yl==1&&Jl==`connected`&&wu())},Su=()=>{bu&&(console.log(`disconnect Node`),Pl?.disconnect(),bu=!1,Yl==1&&Jl==`connected`&&wu())},Cu=()=>{console.log",
@@ -74,6 +81,14 @@
    {
     "find": "`desconnected`,()=>{z(e,!1)});return j(()=>()=>{",
     "replace": "`desconnected`,()=>{window.__alKeepUI||z(e,!1)});return j(()=>()=>{"
+   },
+   {
+    "find": "c_menu__copy_name`)},null,{action:`disli",
+    "replace": "c_menu__copy_name`)},!!window.__alDLok&&{action:`alDownload`,label:`下载`+(l.selectedList.length?`（${l.selectedList.length} 首）`:``)},null,{action:`disli"
+   },
+   {
+    "find": "me`:pp(l.musicInfo);break;case`locate`:m",
+    "replace": "me`:pp(l.musicInfo);break;case`alDownload`:window.__alDLgo?.(l.selectedList.length?[...l.selectedList]:[l.musicInfo],()=>{l.selectedList.length&&n.oncancelmulti?.()});break;case`locate`:m"
    },
    {
     "find": "(()=>{let t=i().mid;e&&Promise.all([Qs(e),ac(e)]).then(([n,r])=>{z(l,n),A().then(()=>{let i=-1;t&&(i=n.fin",
