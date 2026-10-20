@@ -23,9 +23,24 @@ BAD = re.compile(r'伴奏|inst(rumental)?\b|karaoke|铃声|片段|dj版|\bdj\b|�
 
 def log(*a): sys.stderr.write(' '.join(str(x) for x in a) + '\n')
 
+# Keys live in /etc/al-daily.env (root 600, written by the gateway admin page via helper.js setllm). Read here so both
+# the systemd timer and the gateway's sudo'd on-demand run (sudo resets the environment) see them (2026-10-20).
+ENV_FILE = '/etc/al-daily.env'
+def _load_env():
+    try:
+        for ln in open(ENV_FILE, encoding='utf-8'):
+            ln = ln.strip()
+            if not ln or ln.startswith('#') or '=' not in ln: continue
+            k, v = ln.split('=', 1); k = k.strip()
+            if re.fullmatch(r'AL_[A-Z_]+', k) and k not in os.environ: os.environ[k] = v.strip()
+    except OSError: pass
+_load_env()
+
 # on-demand runs (--active, started by the gateway while the user waits) get fewer/shorter retries and a hard
 # overall budget so the gateway's 180 s kill never lands mid-run (2026-10-19)
 ACTIVE = '--active' in sys.argv; DEADLINE = time.time() + (120 if ACTIVE else 10 ** 9)
+# the LLM may use the budget only up to this point: the similar-songs fallback keeps ~55 s (active runs)
+LLM_DEADLINE = DEADLINE - (55 if ACTIVE else 0)
 
 def _env_num(name, default, cast):
     try: return cast(os.environ.get(name, ''))
@@ -166,15 +181,18 @@ def llm_picks(u, hist, others, exclude, n):
               'original versions only (no covers, remixes, instrumentals, karaoke or sped-up versions). '
               'Reply with JSON only: {"songs": [{"name": "...", "singer": "..."}]}'
               % (n, random.choice(ANGLES), '; '.join(exclude[:80]) or 'none'))
+    # thinking off: DeepSeek turns it on by default (slow, and temperature is ignored there)
     body = json.dumps({'model': os.environ.get('AL_LLM_MODEL', 'deepseek-flash'), 'temperature': 0.7,
+                       'thinking': {'type': 'disabled'}, 'max_tokens': 4000,
                        'response_format': {'type': 'json_object'},
                        'messages': [{'role': 'system', 'content': 'You are a music recommendation engine. Output valid JSON only.'},
                                     {'role': 'user', 'content': prompt}]}).encode()
     req = urllib.request.Request(url, body, {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})
     for i in range(2):
-        if time.time() > DEADLINE: return []
+        left = int(LLM_DEADLINE - time.time())
+        if left < 5: return []
         try:
-            with urllib.request.urlopen(req, timeout=min(_env_num('AL_LLM_TIMEOUT', 45, int), max(1, int(DEADLINE - time.time())))) as r: d = json.loads(r.read())
+            with urllib.request.urlopen(req, timeout=min(_env_num('AL_LLM_TIMEOUT', 25, int), left)) as r: d = json.loads(r.read())
             txt = d['choices'][0]['message']['content']
             songs = json.loads(txt[txt.find('{'):txt.rfind('}') + 1]).get('songs') or []
             out = [{'name': str(s['name']), 'singer': str(s['singer'])} for s in songs if isinstance(s, dict) and s.get('name') and s.get('singer')]
@@ -189,6 +207,7 @@ def llm_cand(u, hist, others, owned_ids, owned_key):
     cand, order, tried = {}, [], set()
     base_exclude = [m['name'] for m in hist[:25]] + [m['name'] for m in others[:60]]
     for rnd_i in range(2):
+        if time.time() > LLM_DEADLINE - 10: break
         picks = llm_picks(u, hist, others, base_exclude + [cand[x][1]['name'] for x in order], 50 if rnd_i == 0 else 30)
         fresh = []
         for p in picks:
@@ -303,6 +322,9 @@ def run(users, force=False, active=False):
         except Exception as e:
             log('fail', u['name'], e); continue
         if lst is None: continue
+        if not lst:
+            # never save an empty list: it would stand for the whole day; the next open/timer run retries
+            log('empty', u['name']); continue
         tmp = f + '.tmp'
         json.dump({'date': today, 'ts': int(time.time() * 1000), 'list': lst}, open(tmp, 'w'), ensure_ascii=False)
         os.chmod(tmp, 0o640); os.replace(tmp, f)
