@@ -1438,9 +1438,78 @@
     var hl=document.querySelector('#app-right .view-container>.header>.left'),id=curId();
     if(hl){if(id)deco(hl,id);else{var o=hl.querySelector('img.m-lcov');if(o)o.remove();hl.classList.remove('m-lcov-on')}}}
   window.addEventListener('hashchange',function(){side();setTimeout(side,300)});
+  /* list page cover = same size as a 主页 cover (2026-10-20): measured from 主页 when shown, remembered for later */
+  function cvSize(){var c=document.querySelector('#m-home .m-home-cover');if(!c)return;var w=Math.round(c.getBoundingClientRect().width);if(w>40){var v=w+'px';if(document.documentElement.style.getPropertyValue('--m-cv')!==v){document.documentElement.style.setProperty('--m-cv',v);try{localStorage.setItem('al-cv',v+'|'+innerWidth)}catch(e){}}}}
+  try{var sv=(localStorage.getItem('al-cv')||'').split('|');if(sv[0]&&+sv[1]===innerWidth)document.documentElement.style.setProperty('--m-cv',sv[0])}catch(e){}
+  if(window.__alObs)window.__alObs(cvSize);addEventListener('resize',function(){document.documentElement.style.removeProperty('--m-cv');setTimeout(cvSize,300)});
   window.__alLcov={get:function(id){return skip(id)?'':U(id)},refresh:refresh,all:refreshAll,map:function(){return map}};
   load();side();
   if(window.__alObs)window.__alObs(side);
   fetch('/__gw/me',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){var u=j&&(j.name||j.email||j.user||j.id)||'';if(u!==uid){uid=u;load();side();all=0;refreshAll.w=0;refreshAll()}},function(){});
   for(var k in map)warm(map[k].u);refreshAll();   /* cached covers show at once; check right away instead of after /__gw/me */
+})();
+
+/* song download (2026-10-20): admin only for now. AL list menu "下载" (single or multi-select, bundle patch
+   alDownload) -> options dialog -> per song: AL resolves the url (window.__alDL from bundle) -> POST /__gw/dl
+   (gateway streams it back with tags written; nothing kept on the server) -> browser / app download.
+   Anti-risk-control: strictly sequential, random 3-6 s gap, max 50 per batch, stop after 3 failures in a row. */
+(function(){
+  if(window.__alDLinit)return;window.__alDLinit=1;
+  fetch('/__gw/me',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.role==='admin')window.__alDLok=1}).catch(function(){});
+  var ORDER=['master','flac24bit','flac','320k','128k'],LBL={best:'最高可用',flac24bit:'FLAC 24bit',flac:'FLAC 无损',"320k":'320K MP3',"128k":'128K MP3'};
+  var K='al-dl-opt',busy=null;
+  function opt(){try{return Object.assign({q:'best',cover:true,lrc:true,tlrc:true},JSON.parse(localStorage.getItem(K)||'{}'))}catch(e){return{q:'best',cover:true,lrc:true,tlrc:true}}}
+  function css(){if(document.getElementById('al-dl-css'))return;var s=document.createElement('style');s.id='al-dl-css';s.textContent=
+    '.al-dl-mask{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px}'+
+    '.al-dl-box{background:#fff;color:#222;border-radius:14px;width:100%;max-width:360px;padding:18px 18px 14px;box-shadow:0 10px 40px rgba(0,0,0,.3);font-size:14px}'+
+    '.al-dl-box h3{margin:0 0 4px;font-size:17px}.al-dl-sub{color:#888;font-size:12px;margin-bottom:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+    '.al-dl-box label{display:flex;align-items:center;gap:8px;margin:9px 0}.al-dl-box select{flex:1;padding:6px 8px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#222;font-size:14px}'+
+    '.al-dl-box input[type=checkbox]{width:18px;height:18px;accent-color:#5b6ee1}.al-dl-box .dis{opacity:.45}'+
+    '.al-dl-btns{display:flex;gap:10px;margin-top:14px}.al-dl-btns button{flex:1;padding:9px;border:0;border-radius:9px;font-size:14px;cursor:pointer;background:#eee;color:#333}.al-dl-btns .go{background:#5b6ee1;color:#fff}'+
+    '.al-dl-tip{color:#999;font-size:12px;margin-top:8px;line-height:1.5}'+
+    '.al-dl-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:2147483000;background:rgba(30,30,30,.92);color:#fff;border-radius:22px;padding:8px 8px 8px 16px;display:flex;align-items:center;gap:10px;font-size:13px;max-width:92vw;box-shadow:0 4px 20px rgba(0,0,0,.3)}'+
+    '.al-dl-bar span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62vw}.al-dl-bar button{border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:14px;padding:4px 12px;font-size:12px;cursor:pointer}'+
+    '@media (prefers-color-scheme:dark){.al-dl-box{background:#2a2a2e;color:#eee}.al-dl-box select{background:#1f1f23;color:#eee;border-color:#444}.al-dl-btns button{background:#3a3a40;color:#ddd}}';
+    document.head.appendChild(s)}
+  function pickQ(mi,q){var av=Object.keys((mi.meta&&mi.meta.qualitys)||{});if(!av.length)return q==='best'?'320k':q;
+    var i=q==='best'?0:Math.max(0,ORDER.indexOf(q));for(var k=i;k<ORDER.length;k++)if(av.indexOf(ORDER[k])>=0)return ORDER[k];
+    for(k=ORDER.length-1;k>=0;k--)if(av.indexOf(ORDER[k])>=0)return ORDER[k];return q}
+  function dialog(list,done){css();var o=opt(),n=list.length,qs={};list.forEach(function(m){Object.keys((m.meta&&m.meta.qualitys)||{}).forEach(function(q){qs[q]=1})});
+    var opts=['best'].concat(['flac24bit','flac','320k','128k'].filter(function(q){return qs[q]||!Object.keys(qs).length&&q!=='flac24bit'}));if(opts.indexOf(o.q)<0)o.q='best';
+    var w=document.createElement('div');w.className='al-dl-mask';
+    w.innerHTML='<div class="al-dl-box" role="dialog"><h3>下载'+(n>1?' '+n+' 首歌':'')+'</h3><div class="al-dl-sub"></div>'+
+      '<label>音质<select class="q">'+opts.map(function(q){return '<option value="'+q+'"'+(q===o.q?' selected':'')+'>'+LBL[q]+'</option>'}).join('')+'</select></label>'+
+      '<label><input type="checkbox" class="cv"'+(o.cover?' checked':'')+'>嵌入封面</label>'+
+      '<label><input type="checkbox" class="lr"'+(o.lrc?' checked':'')+'>嵌入歌词</label>'+
+      '<label class="tl"><input type="checkbox" class="tr"'+(o.tlrc?' checked':'')+'>歌词附带翻译</label>'+
+      '<div class="al-dl-tip">没有所选音质时自动降到最接近的一档。'+(n>1?'为避免账号风控，会一首一首地下，每首间隔几秒'+(n>50?'，一次最多 50 首':'')+'。':'')+'</div>'+
+      '<div class="al-dl-btns"><button class="no">取消</button><button class="go">下载</button></div></div>';
+    var $=function(c){return w.querySelector(c)};
+    $('.al-dl-sub').textContent=n>1?list.slice(0,3).map(function(m){return m.name}).join('、')+(n>3?' 等':''):(list[0].name+(list[0].singer?' - '+list[0].singer:''));
+    function syn(){$('.tl').classList.toggle('dis',!$('.lr').checked);$('.tr').disabled=!$('.lr').checked}syn();$('.lr').onchange=syn;
+    function close(){w.remove()}
+    w.addEventListener('click',function(e){if(e.target===w)close()});$('.no').onclick=close;
+    $('.go').onclick=function(){var v={q:$('.q').value,cover:$('.cv').checked,lrc:$('.lr').checked,tlrc:$('.tr').checked};try{localStorage.setItem(K,JSON.stringify(v))}catch(e){}close();done&&done();run(list.slice(0,50),v)};
+    document.body.appendChild(w)}
+  function bar(){var b=document.createElement('div');b.className='al-dl-bar';b.innerHTML='<span></span><button>取消</button>';document.body.appendChild(b);return b}
+  function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+  function save(t){var a=document.createElement('a');a.href='/__gw/dl/'+t;a.download='';a.style.display='none';document.body.appendChild(a);a.click();setTimeout(function(){a.remove()},1000)}
+  async function one(mi,v){var D=window.__alDL,q=pickQ(mi,v.q),r;
+    try{r=await D.url(mi,q)}catch(e){r=null}
+    if(!r||!r.url)r=await D.url(mi,q,true);
+    if(!r||!/^https?:\/\//.test(r.url))throw new Error('取不到下载地址');
+    var cover='',lrc='',tlrc='';
+    if(v.cover){cover=(mi.meta&&mi.meta.picUrl)||'';if(!cover)try{var p=await D.pic(mi);cover=(p&&(p.url||p))||''}catch(e){}if(typeof cover!=='string')cover='';cover=cover.replace(/R500x500/,'R800x800')}
+    if(v.lrc)try{var l=await D.lrc(mi),i=l&&l.info||{};lrc=i.lyric||'';tlrc=v.tlrc?(i.tlyric||''):''}catch(e){}
+    var res=await fetch('/__gw/dl',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-AL':'1'},body:JSON.stringify({url:r.url,name:mi.name,singer:mi.singer,album:mi.meta&&mi.meta.albumName||'',cover:cover,lrc:lrc,tlrc:tlrc})});
+    var j=await res.json().catch(function(){return{}});if(!res.ok||!j.t)throw new Error(j.err||('网关 '+res.status));
+    save(j.t)}
+  async function run(list,v){if(busy){alert('已有下载任务在进行');return}if(!window.__alDL){alert('页面版本太旧，请刷新后再试');return}
+    var b=bar(),s=b.querySelector('span'),stop=false,ok=0,fail=0,row=0;busy=b;b.querySelector('button').onclick=function(){stop=true;s.textContent='正在停止…'};
+    for(var i=0;i<list.length&&!stop;i++){var m=list[i];s.textContent='下载中 '+(i+1)+'/'+list.length+'：'+m.name;
+      try{await one(m,v);ok++;row=0}catch(e){fail++;row++;console.warn('[al-dl]',m.name,e&&e.message);if(row>=3){s.textContent='连续失败 3 次，已停止（'+(e&&e.message||'')+'）';break}}
+      if(i<list.length-1&&!stop)await sleep(3000+Math.random()*3000)}
+    if(row<3)s.textContent=(stop?'已取消：':'完成：')+'成功 '+ok+' 首'+(fail?'，失败 '+fail+' 首':'');
+    b.querySelector('button').textContent='关闭';b.querySelector('button').onclick=function(){b.remove()};busy=null;setTimeout(function(){b.remove()},8000)}
+  window.__alDLgo=function(list,done){if(!window.__alDLok)return;list=(list||[]).filter(function(m){return m&&!m.isLocal});if(!list.length){alert('本地歌曲无需下载');return}dialog(list,done)};
 })();
