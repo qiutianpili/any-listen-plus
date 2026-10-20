@@ -191,6 +191,7 @@ async function adminPage(req, res, me, msg = '', err = '') {
   let mem = ''; try { mem = (await run('free', ['-m'])).split('\n')[1].trim().split(/\s+/); mem = `可用内存 ${mem[6]} MB / ${mem[1]} MB`; } catch (e) {}
   const up = {}; await Promise.all(users.map(async u => { up[u.name] = await portUp(u.port); }));
   const nUsers = users.filter(u => u.role !== 'admin').length;
+  let llm = {}; try { llm = JSON.parse(await helper(['llmstat', 'admin'], null, 10000)); } catch (e) { console.error('llmstat', e.message); }
   const rows = users.map(u => `<tr><td data-l="用户">${esc(dn(u))}${dn(u) !== u.name ? `<div class="tip" style="margin:0">${esc(u.name)}</div>` : ''}</td><td data-l="身份" class="em">${u.role === 'admin' ? '管理员' : (u.email ? esc(u.email) : '用户（已停用）')}</td><td data-l="状态">${up[u.name] ? '运行中' : '休眠'}</td><td data-l="操作" class="ops">${u === me ? '' : `<form method="post" action="/__gw/admin/kick" style="display:inline" onsubmit="return confirm('把 ${esc(dn(u))} 踢下线？他需要重新登录才能继续使用')"><input type="hidden" name="u" value="${esc(u.name)}"><button class="del" style="background:#f0a020">踢下线</button></form>`}${u.role === 'admin' ? '' : ` <form method="post" action="/__gw/admin/del" style="display:inline" onsubmit="return confirm('删除用户 ${esc(dn(u))}？他的歌单和播放记录会一并删除，无法恢复')"><input type="hidden" name="u" value="${esc(u.name)}"><button class="del">删除</button></form>`}</td></tr>`).join('');
   sendAdmin(res, me, page('用户管理', `<h1>用户管理</h1>${msg ? `<div class="ok">${esc(msg)}</div>` : ''}${err ? `<div class="err">${esc(err)}</div>` : ''}<div class="tip" style="margin:0 0 12px">登录使用 Cloudflare Access（邮箱验证码、Google 或 GitHub）。管理员：${esc(ADMIN_EMAILS.join('、'))}；白名单里的其他邮箱首次登录时自己设置用户名。</div><table class="ut"><tr><th>用户</th><th>身份</th><th>状态</th><th>操作</th></tr>${rows}</table>
 <div class="tip" style="margin:-8px 0 14px">普通用户 ${nUsers} / ${settings.maxUsers} 人（不含管理员）</div>
@@ -207,6 +208,14 @@ ${notice ? `<form method="post" action="/__gw/admin/notice" style="margin-top:8p
 <div class="tip">在线用户约 20 秒内收到；不在线的用户 24 小时内打开 Any Listen 时收到。主页推送显示在对方主页公告下方，保留 24 小时，对方可以点 × 关掉。</div>
 ${pushes.length ? `<table class="ut" style="margin-top:12px"><tr><th>最近推送</th><th>对象</th><th>方式</th><th>操作</th></tr>${pushes.slice().reverse().map(p => { const tu = users.find(x => x.name === p.to); return `<tr><td data-l="内容">${p.title ? `<b>${esc(p.title)}</b> ` : ''}${esc(p.text.length > 40 ? p.text.slice(0, 40) + '…' : p.text)}<div class="tip" style="margin:0">${new Date(p.ts).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}</div></td><td data-l="对象">${p.to === '*' ? '全体' : esc(tu ? dn(tu) : p.to)}</td><td data-l="方式">${p.mode === 'toast' ? '右下角' : p.mode === 'home' ? '主页' : '弹窗'}</td><td data-l="操作" class="ops"><form method="post" action="/__gw/admin/unpush" style="display:inline"><input type="hidden" name="id" value="${esc(p.id)}"><button class="del">撤回</button></form></td></tr>`; }).join('')}</table><div class="tip" style="margin:-8px 0 14px">撤回后还没收到的人不会再收到。</div>` : ''}
 <form method="post" action="/__gw/admin/max" style="margin-top:18px"><label>普通用户上限（1–50）<input name="m" type="number" min="1" max="50" value="${settings.maxUsers}" required></label><button style="width:100%">保存用户上限</button></form>
+
+<h2 style="font-size:16px;color:#5b6ee1;margin:22px 0 8px">每日推荐 · 大模型</h2>
+<div class="tip" style="margin:0 0 8px">DeepSeek：${llm.llm ? '已配置（…' + esc(llm.llm) + '）' : '未配置，现用 QQ 音乐相似歌曲算法'}；Clef 重排：${llm.clef ? '已配置' : '未配置（可选）'}。密钥只保存在服务器（root 权限文件），页面不会显示完整内容。开启后会把每位用户最近播放和歌单歌手发给 DeepSeek / Cloudflare 用于推荐。</div>
+<form method="post" action="/__gw/admin/llm" autocomplete="off"><label>DeepSeek API Key<input name="k" type="password" autocomplete="new-password" placeholder="${llm.llm ? '留空则不修改' : 'sk-…'}"></label>
+<label>Cloudflare 账户 ID（Clef，可选）<input name="ca" autocomplete="off" placeholder="${llm.clefAcct ? '…' + esc(llm.clefAcct) + '，留空则不修改' : '32 位'}"></label>
+<label>Cloudflare Workers AI Token（Clef，可选）<input name="ct" type="password" autocomplete="new-password" placeholder="${llm.clef ? '留空则不修改' : ''}"></label>
+<button style="width:100%">保存，并重新生成我今天的推荐</button></form>
+${llm.llm || llm.clef ? `<form method="post" action="/__gw/admin/llm" style="margin-top:8px" onsubmit="return confirm('清除全部大模型密钥？之后回到原来的相似歌曲算法')"><input type="hidden" name="clear" value="1"><button class="del" style="width:100%">清除密钥</button></form>` : ''}
 
 <form method="post" action="/__gw/admin/idle" style="margin-top:18px"><label>闲置多少分钟后自动停止播放器（1–1440）<input name="m" type="number" min="1" max="1440" value="${settings.idleMin}" required></label><button style="width:100%">保存闲置时间</button></form>
 
@@ -341,6 +350,15 @@ const server = http.createServer(async (req, res) => {
           if (!(m >= 1 && m <= 50)) return adminPage(req, res, me, '', '用户上限需在 1–50 之间');
           settings.maxUsers = m; saveSettings();
           return adminPage(req, res, me, `已保存：普通用户上限 ${m} 人`);
+        }
+        if (url.pathname === '/__gw/admin/llm') {
+          const j = b.get('clear') === '1' ? { clear: ['AL_LLM_API_KEY', 'AL_CLEF_ACCOUNT_ID', 'AL_CLEF_API_TOKEN'] }
+            : { AL_LLM_API_KEY: String(b.get('k') || '').trim(), AL_CLEF_ACCOUNT_ID: String(b.get('ca') || '').trim().toLowerCase(), AL_CLEF_API_TOKEN: String(b.get('ct') || '').trim() };
+          try { await helper(['setllm', 'admin'], JSON.stringify(j), 10000); }
+          catch (e) { return adminPage(req, res, me, '', /bad AL_/.test(e.message) ? '格式不对：' + e.message.replace('bad ', '') : '保存失败'); }
+          if (j.clear) return adminPage(req, res, me, '已清除大模型密钥，每日推荐回到相似歌曲算法');
+          helper(['daily', me.name, 'force'], null, 180000).catch(e => console.error('daily force', me.name, e.message));
+          return adminPage(req, res, me, '已保存。正在重新生成你今天的每日推荐，约 1 分钟后刷新主页查看；其他人从明天起生效');
         }
         if (url.pathname === '/__gw/admin/idle') {
           const m = parseInt(b.get('m'), 10);
