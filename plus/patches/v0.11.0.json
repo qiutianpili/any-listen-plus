@@ -1,11 +1,7 @@
 {
  "indexBzjGy48v.js": {
   "sha256_original": "d8fa16e472c42b2c69f0014e434561e8328aae6f8034525cff263d82b735d0d2",
-  "sha256_patched": "653d3251e1cd80c5c60b50b2d65e053cb3055595a7f9c297939c0efe0c742444",
-  "sha256_previous": [
-   "fcf7807c62732e3c5dfd83b9cb49a024e5229d6f59d5678740b0c49d320e48d9",
-   "ac8c04b40d1cf447c5c5ce7ac5e7c2d6634d990675411f103868dd440e843ab8"
-  ],
+  "sha256_patched": "e6400095108757af5c8c9ee5ad8f6f186ff8f3058b99114ec305fee2c7c99a8d",
   "hunks": [
    {
     "find": "ipboardWriteText(e)},Fn=async()=>q.getLoginDevices(),In=async e=>q.removeLoginDevice(e),Ln=async e=>q.openUrl(e),Rn=async()=>q.getCurrentVersionInfo(),zn=async()=>q.checkUpdate(),Bn=async()=>q.downloadUpdate(),Vn=async()=>q.restartUpdate(),Hn=async()=>q.getCacheSize(),Un=async()=>q.clearCache(),Wn=async(e,t)=>q.exportData(e,t),Gn=async(e,t,n)=>q.importData(e,t,n),Kn=async e=>q.getAppLogs(e),qn=async e=>q.clearAppLog(e),Jn=e=>{let t=Math.trunc((Da",
@@ -74,6 +70,10 @@
    {
     "find": "w()-cp>400||lp!==n){cp=window.performance.now(),lp=n;return}cp=0,lp=null,",
     "replace": "w()-cp>400||lp!==n){cp=window.performance.now(),lp=n,__alPre(n);return}cp=0,lp=null,"
+   },
+   {
+    "find": "`desconnected`,()=>{z(e,!1)});return j(()=>()=>{",
+    "replace": "`desconnected`,()=>{window.__alKeepUI||z(e,!1)});return j(()=>()=>{"
    },
    {
     "find": "(()=>{let t=i().mid;e&&Promise.all([Qs(e),ac(e)]).then(([n,r])=>{z(l,n),A().then(()=>{let i=-1;t&&(i=n.fin",
