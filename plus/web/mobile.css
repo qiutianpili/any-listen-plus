@@ -445,3 +445,26 @@ html.al-e2e .play-detail .player-detail-main{left:var(--al-sal,0px)!important;ri
 }
 
 #m-splash .m-sp-tip a.m-sp-rl.busy{opacity:.55;pointer-events:none;border-bottom-color:transparent}
+
+/* drag grip: touch reorder only from ≡ at the row's right edge; long-press on the row = AL menu (2026-10-19) */
+.m-grip{display:none;position:absolute;top:0;right:0;bottom:0;width:40px;z-index:3;cursor:grab;touch-action:none;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none}
+.m-grip::before{content:"";position:absolute;left:50%;top:50%;width:16px;height:10px;margin:-5px 0 0 -8px;opacity:.45;background:linear-gradient(currentColor,currentColor) 0 0/100% 2px no-repeat,linear-gradient(currentColor,currentColor) 0 4px/100% 2px no-repeat,linear-gradient(currentColor,currentColor) 0 8px/100% 2px no-repeat;color:var(--color-font,#333);border-radius:1px}
+.m-grip:active::before{opacity:.9;color:var(--color-primary,#5b6ee1)}
+html.m-can-grip .my-list > ul > li > .m-grip{display:block}
+@media (pointer:coarse){html.m-can-grip .my-list > ul > li > .container{padding-right:40px;box-sizing:border-box}
+  .my-list > ul > li > .container{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}}
+@media (pointer:fine){html.m-can-grip .my-list > ul > li > .m-grip{width:32px}}
+html.m-dragging .m-grip::before{opacity:.9}
+/* phones: AL's long-press / context menu becomes a bottom action sheet with big touch targets (2026-10-19) */
+@media (pointer:coarse){
+  div.menu.svelte-oh9zwc{position:fixed!important;left:10px!important;right:10px!important;top:auto!important;bottom:calc(10px + env(safe-area-inset-bottom,0px))!important;width:auto!important;min-width:0!important;max-width:none!important;max-height:72vh;overflow-y:auto;overscroll-behavior:contain;border-radius:16px!important;padding:6px 0!important;transform:none!important;transform-origin:50% 100%!important;box-shadow:0 -2px 24px rgba(0,0,0,.18),0 0 0 100vmax rgba(0,0,0,.28)!important;z-index:2147481000!important}
+  div.menu.svelte-oh9zwc .menu-item{min-height:46px;display:flex;align-items:center;padding:0 20px!important;font-size:15px!important;box-sizing:border-box}
+}
+
+/* 歌单封面 = first song's cover (2026-10-20) */
+.m-home-cover .m-home-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.m-home-eb{display:none!important}
+#app-main .aside .my-list-container .left.m-lcov-on>:not(.m-lcov){display:none!important}
+#app-main .aside .my-list-container .left .m-lcov{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
+#app-right .view-container>.header>.left.m-lcov-on>:not(.m-lcov){display:none!important}
+#app-right .view-container>.header>.left .m-lcov{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
