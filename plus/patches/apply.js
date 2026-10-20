@@ -8,6 +8,8 @@ if (!root) { console.error('usage: node apply.js <any-listen dir>'); process.exi
 const where = { 'indexBzjGy48v.js': 'public', 'app.js': 'server', 'extension-service.worker.js': 'server',
   // media proxy: blocks loopback/private/metadata targets on every hop (SSRF), proxyAllResources defaults off
   'index.js': 'server', 'preload-helper.js': 'server',
+  // Android app only: 设置 > 软件更新 renders the app's own version/log items (no-op on web, gated on window.AndroidBridge)
+  'AppSetting-VUO4Lkte.js': 'public', 'Update-Cz58KBQF.js': 'public',
   // music-source loader extension (install it from the app first): hedged source race + parallel source init
   'lx-api-source-loader_0.1.7/main.js': 'data/app/extension/ext' };
 const set = JSON.parse(fs.readFileSync(path.join(__dirname, 'v0.11.0.json'), 'utf8'));
