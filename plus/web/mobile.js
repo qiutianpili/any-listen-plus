@@ -571,7 +571,7 @@
     if(pi&&!pi.querySelector(':scope>.m-scrub')){var b=make(false);pi.appendChild(b);bars.push(b)}
     var mp=document.querySelector('.play-detail .middle-play-progress.svelte-ecc6yq');
     if(mp&&!(mp.nextElementSibling&&mp.nextElementSibling.classList.contains('m-scrub'))){var d=make(true);mp.parentNode.insertBefore(d,mp.nextSibling);bars.push(d)}
-    if(bars.length&&!timer){timer=setInterval(tick,500)}
+    if(bars.length&&!timer){timer=setInterval(function(){if(!document.hidden)tick()},500)}
     tick();
   }
   if(window.__alObs)window.__alObs(setup);
@@ -683,10 +683,11 @@
   function paint(cv,l,love){
     cv.textContent='';
     if(love){cv.innerHTML='<svg class="m-home-heart" viewBox="0 0 24 24" fill="currentColor"><path d="'+HEART+'"/></svg>';return}
-    if(isDaily(l)){cv.innerHTML=SUN;return}
-    var e=covers[l.id];
-    if(e)cv.appendChild(el('span','m-home-emo',e));
-    else cv.appendChild(el('span','m-home-ph',Array.from(l.name||'?')[0]));
+    /* 2026-10-20: every list except 我喜欢 uses its first song's cover (window.__alLcov); no emoji */
+    cv.dataset.lid=l.id;cv.dataset.ph=Array.from(l.name||'?')[0];
+    var u=window.__alLcov&&window.__alLcov.get(l.id);
+    if(u){var im=el('img','m-home-img');im.referrerPolicy='no-referrer';im.decoding='async';im.alt='';im.onerror=function(){im.remove();if(!cv.querySelector('.m-home-ph'))cv.appendChild(el('span','m-home-ph',cv.dataset.ph))};im.src=u;cv.appendChild(im)}
+    else cv.appendChild(el('span','m-home-ph',cv.dataset.ph));
   }
   function closeEd(){var p=document.getElementById('m-home-ed');if(p)p.remove()}
   function editCover(btn,cv,l){
@@ -715,9 +716,9 @@
   document.addEventListener('mousedown',function(e){var p=document.getElementById('m-home-ed');if(p&&!p.contains(e.target))closeEd()});
   function listCard(grid,l,my){
     var love=l.id===my,c=el('a','m-home-card m-home-list');c.href='#/library?id='+encodeURIComponent(l.id);
-    var cv=el('div','m-home-cover'+(love?' love':'')+(isDaily(l)?' sun':''));paint(cv,l,love);
+    var cv=el('div','m-home-cover'+(love?' love':''));paint(cv,l,love);
     var wrapC=el('div','m-home-cw');wrapC.appendChild(cv);
-    if(!love&&!isDaily(l)){var eb=el('button','m-home-eb');eb.type='button';eb.title='修改封面';eb.setAttribute('aria-label','修改封面');
+    if(false){var eb=el('button','m-home-eb');eb.type='button';eb.title='修改封面';eb.setAttribute('aria-label','修改封面');
       eb.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
       eb.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();editCover(eb,cv,l)});wrapC.appendChild(eb)}
     c.appendChild(wrapC);
@@ -752,7 +753,7 @@
       drawnN=mine.length;mine.forEach(function(l){listCard(grid,l,love&&love.id)});
       if(!mine.length)grid.appendChild(el('div','m-home-empty','还没有自建或收藏的歌单，可以在左侧“我的列表”里新建，或在在线歌单里点收藏。'));
       };
-      fetch('/__gw/covers',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():{}}).then(function(j){covers=j&&typeof j==='object'?j:{};draw()}).catch(function(){draw()});
+      draw();
     })(0);
   }
   /* the app redirects to its last list right after boot: ignore route changes the user did not cause during the first seconds */
@@ -768,7 +769,8 @@
   window.addEventListener('hashchange',function(){if(fromHome&&location.hash!==fromHome)fromHome=null});
   document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('#app-right .toolbar [aria-label="返回"]');
     if(!b||on||!fromHome||location.hash!==fromHome)return;e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();fromHome=null;show()},true);
-  window.__alHome={show:show,hide:hide,pushes:pushCards};
+  window.__alHome={show:show,hide:hide,pushes:pushCards,
+    cover:function(id){if(!on)return;var cs=document.querySelectorAll('#m-home .m-home-cover:not(.love)');for(var i=0;i<cs.length;i++)if(cs[i].dataset.lid===id){var l={id:id,name:cs[i].dataset.ph};paint(cs[i],l,false)}}};
 })();
 /* 每日推荐 (2026-10-12): the gateway builds 30 songs a day (/__gw/daily, QQ similar songs from history + lists);
    keep a native list named 每日推荐 (first in 我的列表) overwritten with today's songs via the bundle's list actions (__alLib.act). */
@@ -821,7 +823,7 @@
    if they or the bundle are missing it falls back to the original page with a console warning. Switching never touches playback. */
 (function(){
   if(/^\/__gw\//.test(location.pathname))return;
-  var FV='5',K='al-detail-style',SRC='/__m/folia/folia-player.js?v='+FV;
+  var FV='6',K='al-detail-style',SRC='/__m/folia/folia-player.js?v='+FV;
   var mqP=window.matchMedia('(max-width: 820px), (pointer: coarse) and (max-width: 1024px)');
   var mod=null,loading=null,handle=null,host=null,failed=false,warned=false,pdSeen=null,closing=0;
   function style(){var d=mqP.matches?'al':'folia';try{var v=localStorage.getItem(K);return v==='al'||v==='folia'?v:d}catch(e){return d}}
@@ -1135,21 +1137,53 @@
     }).catch(function(e){toast('移动失败：'+(e&&e.message||e))});
   }
   document.addEventListener('click',function(e){if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false}},true);
-  document.addEventListener('contextmenu',function(e){if(drag||pend&&pend.armed){e.preventDefault();e.stopPropagation()}},true);
+  /* 2026-10-19: touch drag only from the ≡ grip at the row's right edge, so a long-press on the row is left to
+     AL's own menu (播放/移除/批量…). Mouse: vertical drag on the row still works, except in 批量选择 mode. */
+  function multi(){return !!document.querySelector('.my-list .container.selected')||(!!document.querySelector('.my-list')&&!document.querySelector('button[aria-label="批量选择"]')&&!!document.querySelector('button[aria-label="退出批量选择"],button[aria-label="退出多选"]'))}
+  /* 2026-10-19 (user): reorder ONLY inside 多选/批量选择 mode — never by default, it hurt normal scrolling */
+  function multiMode(){return !!document.querySelector('.my-list')&&!!document.querySelector('button[aria-label="退出批量选择"],button[aria-label="退出多选"]')}
+  function canSort(){var id=lid();return !!id&&id!=='last_played'}
+  function grips(){
+    var on=canSort()&&multiMode();document.documentElement.classList.toggle('m-can-grip',on);if(!on)return;
+    var lis=document.querySelectorAll('.my-list > ul > li');
+    for(var i=0;i<lis.length;i++){var li=lis[i];if(li.querySelector(':scope > .m-grip')||!li.querySelector(':scope > .container'))continue;
+      var g=document.createElement('span');g.className='m-grip';g.setAttribute('aria-label','拖动排序');g.title='拖动排序';li.appendChild(g)}
+  }
+  var graf=0;new MutationObserver(function(){if(graf)return;graf=requestAnimationFrame(function(){graf=0;grips()})}).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+  window.addEventListener('hashchange',grips);window.__alGrips=grips;
+  document.addEventListener('contextmenu',function(e){if(drag){e.preventDefault();e.stopPropagation();return}
+    if(e.target.closest&&e.target.closest('.m-grip')){e.preventDefault();e.stopPropagation();return}
+    var cli=matchMedia('(pointer: coarse)').matches&&e.target.closest&&e.target.closest('.my-list > ul > li');
+    if(cli){try{navigator.vibrate&&navigator.vibrate(10)}catch(_){}if(!multi()&&lid())addMulti(cli)}},true);
+  /* phones: long-press sheet gets a 多选 entry — enters AL's 批量选择 with the pressed song already selected */
+  function addMulti(li){
+    var n=0;(function t(){var m=document.querySelector('div.menu.svelte-oh9zwc');
+      if(!m||getComputedStyle(m).opacity==='0'){if(++n<20)requestAnimationFrame(t);return}
+      var old=m.querySelector('.m-menu-multi');if(old)old.remove();
+      var b=document.createElement('button');b.type='button';b.className=(m.querySelector('.menu-item')||{}).className||'menu-item';b.classList.add('m-menu-multi');b.textContent='多选';
+      b.addEventListener('click',function(ev){ev.stopPropagation();ev.preventDefault();
+        try{document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))}catch(_){}
+        try{document.body.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));document.body.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));document.body.dispatchEvent(new MouseEvent('click',{bubbles:true}))}catch(_){}
+        var mb=document.querySelector('button[aria-label="批量选择"]');if(mb)mb.click();
+        setTimeout(function(){var c=li.isConnected&&li.querySelector(':scope > .container');if(c&&!c.classList.contains('selected'))c.click()},80);
+      });
+      m.insertBefore(b,m.firstChild);
+    })();
+  }
   var pend=null;
   document.addEventListener('pointerdown',function(e){
-    if(drag||e.button!==0||busy)return;var li=rowOf(e.target);if(!li)return;
-    pend={li:li,x:e.clientX,y:e.clientY,t:e.pointerType,armed:false,tm:0};
-    if(e.pointerType!=='mouse')pend.tm=setTimeout(function(){if(pend&&!drag){pend.armed=true;try{navigator.vibrate&&navigator.vibrate(12)}catch(_){}start(pend.li,pend.x,pend.y)}},380);
+    if(drag||busy)return;
+    var gp=e.target.closest&&e.target.closest('.m-grip');
+    if(gp){if(e.button!==0&&e.pointerType==='mouse')return;var gli=gp.parentElement;if(!canSort()||!multiMode()||!gli)return;
+      e.preventDefault();e.stopPropagation();try{navigator.vibrate&&navigator.vibrate(12)}catch(_){}start(gli,e.clientX,e.clientY);return}
   },true);
   document.addEventListener('pointermove',function(e){
     if(drag){move(e.clientX,e.clientY);return}
     if(!pend)return;var dx=e.clientX-pend.x,dy=e.clientY-pend.y;
-    if(pend.t==='mouse'){if(Math.abs(dy)>6&&Math.abs(dy)>Math.abs(dx)){var p=pend;pend=null;start(p.li,p.x,p.y);move(e.clientX,e.clientY)}else if(Math.abs(dx)>10)pend=null}
-    else if(Math.hypot(dx,dy)>8){clearTimeout(pend.tm);pend=null}
+    if(Math.abs(dy)>6&&Math.abs(dy)>Math.abs(dx)){var p=pend;pend=null;start(p.li,p.x,p.y);move(e.clientX,e.clientY)}else if(Math.abs(dx)>10)pend=null;
   },true);
-  function up(e){if(pend){clearTimeout(pend.tm);pend=null}if(drag)end(e.type==='pointercancel')}
-  document.addEventListener('pointerup',up,true);document.addEventListener('pointercancel',function(e){if(drag&&drag.li&&e.pointerType!=='mouse')return;up(e)},true);
+  function up(e){pend=null;if(drag)end(e.type==='pointercancel')}
+  document.addEventListener('pointerup',up,true);document.addEventListener('pointercancel',function(e){if(drag&&e.pointerType!=='mouse')return;up(e)},true);
   document.addEventListener('touchmove',function(e){if(drag){e.preventDefault();var t=e.touches[0];t&&move(t.clientX,t.clientY)}},{passive:false,capture:true});
   document.addEventListener('touchend',function(){if(drag)end(false)},true);
   document.addEventListener('selectstart',function(e){if(drag)e.preventDefault()},true);
@@ -1202,7 +1236,7 @@
     else{if(!meta){meta=document.querySelector('meta[name="theme-color"]')||document.head.appendChild(Object.assign(document.createElement('meta'),{name:'theme-color'}))}meta.content=t}}
   function kick(){if(qd)return;qd=true;setTimeout(run,Math.max(0,250-(Date.now()-lastRun)))}
   window.__alBars={run:function(){last='';run()},state:function(){return last}};
-  if(window.__alObs)window.__alObs(kick);setInterval(kick,1500);addEventListener('resize',kick);kick();
+  if(window.__alObs)window.__alObs(kick);setInterval(function(){if(!document.hidden)kick()},1500);document.addEventListener('visibilitychange',function(){if(!document.hidden)kick()});addEventListener('resize',kick);kick();
 
   /* ---- 全屏 / 横屏 on the song-detail page (phones) ---- */
   if(!PHONE||(!APP&&/AnyListenApp\//.test(navigator.userAgent)))return;   /* app < 1.0.6 has no native fullscreen/orientation */
@@ -1224,8 +1258,9 @@
     paint()}
   document.addEventListener('fullscreenchange',function(){if(!document.fullscreenElement&&LAND&&!APP)LAND=false;paint()});
   function btn(id,cls){var b=document.createElement('button');b.type='button';b.id=id;b.className=cls;
-    b.addEventListener('click',function(e){e.stopPropagation();e.preventDefault();if(id.indexOf('fs')>0)setFs(!isFs());else setLand(!LAND)});
-    ['mousedown','pointerdown','dblclick','contextmenu'].forEach(function(t){b.addEventListener(t,function(e){e.stopPropagation()})});return b}
+    var unlit=function(){b.classList.remove('hover');try{b.blur()}catch(e){}};   /* touch never sends mouseout: AL's .hover would stay lit */
+    b.addEventListener('click',function(e){e.stopPropagation();e.preventDefault();if(id.indexOf('fs')>0)setFs(!isFs());else setLand(!LAND);unlit();setTimeout(unlit,0);setTimeout(unlit,400)});
+    ['mousedown','pointerdown','dblclick','contextmenu','mouseover','mouseenter'].forEach(function(t){b.addEventListener(t,function(e){e.stopPropagation()})});return b}
   function paintBtn(b,on,a,bOff,lab,labOff){if(!b)return;var k=on?a:bOff;if(b.dataset.k!==k){b.dataset.k=k;b.innerHTML=svg(k)}var l=on?labOff:lab;if(b.getAttribute('aria-label')!==l){b.setAttribute('aria-label',l);b.title=l}b.classList.toggle('on',on)}
   function paint(){var f=isFs();
     var fh=document.getElementById('m-folia'),sr=fh&&fh.shadowRoot;
@@ -1248,7 +1283,7 @@
       if(wasOpen){wasOpen=false;if(LAND)setLand(false);if(isFs())setFs(false)}
     }
   }
-  if(window.__alObs)window.__alObs(sync);setInterval(sync,1000);
+  if(window.__alObs)window.__alObs(sync);setInterval(function(){if(!document.hidden)sync()},1000);document.addEventListener('visibilitychange',function(){if(!document.hidden)sync()});
   window.__alView={fs:setFs,land:setLand,state:function(){return {fs:isFs(),land:LAND}}};
 })();
 
@@ -1288,4 +1323,124 @@
       if(window.requestIdleCallback)requestIdleCallback(go,{timeout:1200});else setTimeout(go,50)})();
   }
   setTimeout(preload,2500);
+})();
+
+/* lifecycle + audio sync (2026-10-19): keep the UI mounted while the socket reconnects (no blank page after background), revive the socket on resume / online / when AL's own retry gave up, and keep the play icon in sync when the audio was paused by the system (Bluetooth / headphones unplugged, audio focus). */
+(function(){
+  if(/^\/__gw\//.test(location.pathname))return;
+  window.__alKeepUI=true;
+  var hiddenAt=0;
+  function I(){return window.__alIpc}
+  function kick(why,force){var i=I();if(!i)return;try{var r=i.kick(!!force);if(r==='kicked')console.log('[al-life] ipc kick ('+why+')')}catch(e){}}
+  function playing(){try{return !!(window.__alPl&&window.__alPl.playing())}catch(e){return false}}
+  function resume(why){
+    var i=I();if(!i)return;var away=hiddenAt?Date.now()-hiddenAt:0;hiddenAt=0;
+    var st=i.state();
+    if(st!==1){kick(why);return}
+    /* socket claims open: after a long sleep with nothing received it is probably half-open */
+    if(away>120000&&!playing()&&Date.now()-i.lastMsg()>120000)kick(why+' stale',true);
+  }
+  window.__alResume=function(){resume('app')};
+  document.addEventListener('visibilitychange',function(){if(document.hidden)hiddenAt=Date.now();else resume('visible')});
+  window.addEventListener('pageshow',function(){resume('pageshow')});
+  window.addEventListener('online',function(){setTimeout(function(){kick('online')},800)});
+  /* watchdog: AL stops retrying after a failed reconnect (1006 before open) */
+  setInterval(function(){
+    if(document.hidden&&!playing())return;
+    var i=I();if(!i)return;var st=i.state();
+    if((st===-1||st===3)&&!i.pending())kick('watchdog');
+  },4000);
+
+  /* play-state sync */
+  function audio(){try{return window.__alPl&&window.__alPl.audio()}catch(e){return null}}
+  function pauseNow(why){
+    var p=window.__alPl;if(!p)return;
+    try{if(p.playing())p.pause()}catch(e){}
+    setTimeout(function(){var a=audio();try{if(a&&!a.paused)a.pause()}catch(e){}try{if(p.playing())p.pause()}catch(e){}},500);
+    console.log('[al-life] paused ('+why+')');
+  }
+  window.__alNoisy=function(why){pauseNow(why||'noisy')};
+  /* only a track that was really playing and then got paused mid-song with no src change counts;
+     track switches (new src still loading / waiting for play(), fades, silent data: placeholder) never do */
+  var bad=0,livSrc='',hooked=null;
+  function hook(a){if(hooked===a)return;hooked=a;livSrc='';
+    a.addEventListener('playing',function(){livSrc=a.currentSrc||a.src||''});
+    a.addEventListener('emptied',function(){livSrc=''});
+    a.addEventListener('loadstart',function(){livSrc=''});}
+  setInterval(function(){
+    var p=window.__alPl,a=audio();
+    if(a)hook(a);
+    if(!p||!a||!playing()){bad=0;return}
+    var src=a.currentSrc||a.src||'';
+    var dur=a.duration||0,t=a.currentTime||0;
+    if(a.paused&&!a.ended&&!a.seeking&&a.readyState>=2&&src&&src.indexOf('data:')!==0&&src===livSrc&&t>2&&(!dur||t<dur-2)){if(++bad>=4){bad=0;try{p.pause()}catch(e){}console.log('[al-life] icon resync: audio paused by system')}}
+    else bad=0;
+  },1000);
+})();
+
+/* 歌单封面 (2026-10-20): every list except 我喜欢 shows its first song's cover — on 主页 cards and in the sidebar 我的列表.
+   Recomputed for all lists on every app start / login, and for a list whenever its songs change (bundle events + __alLCput).
+   Cached in localStorage per user so the covers show instantly before the refresh. */
+(function(){
+  if(/^\/__gw\//.test(location.pathname)||window.__alLcov)return;
+  /* map[listId]={s:songId,u:url} of the song the cover came from; a start only refetches a list whose first song changed */
+  var map={},uid='',KEY='al-lcov:',busy={},queue=[],all=0;
+  try{uid=localStorage.getItem('al-lcov-u')||''}catch(e){}
+  function save(){try{localStorage.setItem(KEY+uid,JSON.stringify(map));localStorage.setItem('al-lcov-u',uid)}catch(e){}}
+  function load(){try{map=JSON.parse(localStorage.getItem(KEY+uid)||'{}')||{}}catch(e){map={}}for(var k in map)if(typeof map[k]==='string')map[k]={s:'',u:map[k]}}
+  function U(id){var v=map[id];return v&&v.u||''}
+  /* small thumbnails load much faster than the 500px originals (QQ / NetEase CDNs size by URL) */
+  function small(u){u=String(u);if(/y\.gtimg\.cn\/music\/photo_new\/T002R\d+x\d+/.test(u))return u.replace(/T002R\d+x\d+/,'T002R300x300');if(/music\.126\.net\//.test(u))return /[?&]param=\d+y\d+/.test(u)?u.replace(/param=\d+y\d+/,'param=300y300'):u+(u.indexOf('?')<0?'?':'&')+'param=300y300';return u}
+  function pic(m){var x=m&&m.meta,u=x&&(x.picUrl||x.pic||x.img)||'';return u?small(u):''}
+  function warm(u){if(!u)return;try{var i=new Image();i.referrerPolicy='no-referrer';i.decoding='async';i.src=u}catch(e){}}
+  function first(ms){if(!ms)return null;for(var i=0;i<ms.length&&i<30;i++){var u=pic(ms[i]);if(u)return {s:String(ms[i].id||''),u:String(u)}}return null}
+  function set(id,f){var o=map[id];if(f&&o&&o.s===f.s&&o.u===f.u)return;if(!f&&!o)return;if(f){map[id]=f;warm(f.u)}else delete map[id];save();side();try{window.__alHome&&window.__alHome.cover&&window.__alHome.cover(id)}catch(e){}}
+  function skip(id){return id==='love'||id==='last_played'}
+  function refresh(id){if(skip(id)||busy[id])return;if(queue.indexOf(id)<0)queue.push(id);pump()}
+  var active=0,MAX=4;   /* a few lists in parallel */
+  function pump(){while(active<MAX&&queue.length){var L=window.__alLib;if(!L||!L.musics){setTimeout(pump,300);return}
+    (function(id){active++;busy[id]=1;
+    Promise.resolve().then(function(){return L.musics(id)}).then(function(ms){set(id,first(ms))},function(){}).then(function(){delete busy[id];active--;pump()})})(queue.shift())}}
+  function refreshAll(){var L=window.__alLib;if(!L||!L.lists){setTimeout(refreshAll,250);return}
+    var ls=[];try{ls=L.lists()}catch(e){}
+    if(!ls.some(function(l){return l.type})&&all<20){all++;setTimeout(refreshAll,250);return}   /* user lists may load a moment later */
+    var C=window.__alLC;if(C&&C.ready&&!C.ready()&&(refreshAll.w=(refreshAll.w||0)+1)<12){setTimeout(refreshAll,150);return}   /* wait for the local list snapshots (IndexedDB) */
+    var ids={};ls.forEach(function(l){ids[l.id]=1;if(skip(l.id))return;
+      var snap=C&&C.peek&&C.peek(l.id),f=snap?first(snap):undefined,o=map[l.id];
+      if(o&&o.s&&f&&f.s===o.s&&f.u!==o.u){set(l.id,f);return}
+      if(o&&o.s&&(f===undefined||(f&&f.s===o.s)))return;          /* same first song (or no local copy to compare): keep the cover, no fetch */
+      if(f&&o&&!o.s&&f.u===o.u){map[l.id]=f;return}
+      if(f){set(l.id,f);return}                                     /* local snapshot already knows the new first song */
+      refresh(l.id)});
+    Object.keys(map).forEach(function(k){if(!ids[k])delete map[k]});save()}
+  /* song-change hooks: AL list events + the list-cache hook (setMusicList) */
+  var tm={};function soon(id){if(!id||skip(id))return;clearTimeout(tm[id]);tm[id]=setTimeout(function(){delete tm[id];refresh(id)},400)}
+  function hook(){var L2=window.__alLib2;if(!L2||!L2.Ho)return false;var H=L2.Ho;if(H.__lcov)return true;H.__lcov=1;
+    ['listMusicChanged','listMusicUpdated','listMusicAdded','listMusicRemoved','listMusicOverwrite','listMusicMoved','listMusicCleared','listMusicUpdatePosition'].forEach(function(n){var f=H[n];if(typeof f!=='function')return;
+      H[n]=function(x){try{var ids=x instanceof Map?Array.from(x.keys()):Array.isArray(x)?x:x&&typeof x==='object'?[x.listId||x.id].concat(x.ids&&x.listId?[]:[]):[x];ids.forEach(function(i){if(typeof i==='string')soon(i)})}catch(e){}return f.apply(this,arguments)}});return true}
+  (function tryHook(n){if(!hook()&&n<60)setTimeout(function(){tryHook(n+1)},1000)})(0);
+  (function wrapPut(n){var f=window.__alLCput;if(typeof f!=='function'){if(n<60)setTimeout(function(){wrapPut(n+1)},500);return}if(f.__lcov)return;
+    var g=function(id){soon(id);return f.apply(this,arguments)};g.__lcov=1;window.__alLCput=g})(0);
+  /* sidebar: our own <img> in each list's .left; AL's own picture node is only hidden by CSS */
+  /* our own <img> in a list picture slot (.left); AL's own picture node is only hidden by CSS */
+  function deco(left,id){
+    var u=skip(id)?'':U(id),im=left.querySelector('img.m-lcov');
+    if(!u){if(im)im.remove();left.classList.remove('m-lcov-on');return}
+    if(!im){var ref=left.querySelector('.pic');im=document.createElement('img');im.className='m-lcov '+(ref?(ref.className.match(/svelte-\w+/)||[''])[0]:'');im.alt='';im.referrerPolicy='no-referrer';im.decoding='async';im.onerror=function(){var l=this.parentNode;this.remove();if(l)l.classList.remove('m-lcov-on')};left.appendChild(im)}
+    if(im.getAttribute('src')!==u)im.src=u;
+    left.classList.add('m-lcov-on')}
+  function curId(){var m=/^#\/library\?(?:.*&)?id=([^&]+)/.exec(location.hash);try{return m?decodeURIComponent(m[1]):''}catch(e){return ''}}
+  function side(){
+    var c=document.querySelector('#app-main .aside .my-list-container');
+    if(c){var lis=c.querySelectorAll('li[data-id]');
+      for(var i=0;i<lis.length;i++){var left=lis[i].querySelector('.left');if(left)deco(left,lis[i].dataset.id)}}
+    /* the list page header (点进歌单后的大封面) */
+    var hl=document.querySelector('#app-right .view-container>.header>.left'),id=curId();
+    if(hl){if(id)deco(hl,id);else{var o=hl.querySelector('img.m-lcov');if(o)o.remove();hl.classList.remove('m-lcov-on')}}}
+  window.addEventListener('hashchange',function(){side();setTimeout(side,300)});
+  window.__alLcov={get:function(id){return skip(id)?'':U(id)},refresh:refresh,all:refreshAll,map:function(){return map}};
+  load();side();
+  if(window.__alObs)window.__alObs(side);
+  fetch('/__gw/me',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){var u=j&&(j.name||j.email||j.user||j.id)||'';if(u!==uid){uid=u;load();side();all=0;refreshAll.w=0;refreshAll()}},function(){});
+  for(var k in map)warm(map[k].u);refreshAll();   /* cached covers show at once; check right away instead of after /__gw/me */
 })();
