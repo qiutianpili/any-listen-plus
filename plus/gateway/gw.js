@@ -211,7 +211,7 @@ ${pushes.length ? `<table class="ut" style="margin-top:12px"><tr><th>最近推�
 
 <h2 style="font-size:16px;color:#5b6ee1;margin:22px 0 8px">每日推荐 · 大模型</h2>
 <div class="tip" style="margin:0 0 8px">DeepSeek：${llm.llm ? '已配置（…' + esc(llm.llm) + '）' : '未配置，现用 QQ 音乐相似歌曲算法'}；Clef 重排：${llm.clef ? '已配置' : '未配置（可选）'}。密钥只保存在服务器（root 权限文件），页面不会显示完整内容。开启后会把每位用户最近播放和歌单歌手发给 DeepSeek / Cloudflare 用于推荐。</div>
-<form method="post" action="/__gw/admin/llm" autocomplete="off"><label>DeepSeek API Key<input name="k" type="password" autocomplete="new-password" placeholder="${llm.llm ? '留空则不修改' : 'sk-…'}"></label>
+<form method="post" action="/__gw/admin/llm" autocomplete="off" class="m-gw-skip"><label>DeepSeek API Key<input name="k" type="password" autocomplete="new-password" placeholder="${llm.llm ? '留空则不修改' : 'sk-…'}"></label>
 <label>Cloudflare 账户 ID（Clef，可选）<input name="ca" autocomplete="off" placeholder="${llm.clefAcct ? '…' + esc(llm.clefAcct) + '，留空则不修改' : '32 位'}"></label>
 <label>Cloudflare Workers AI Token（Clef，可选）<input name="ct" type="password" autocomplete="new-password" placeholder="${llm.clef ? '留空则不修改' : ''}"></label>
 <button style="width:100%">保存，并重新生成我今天的推荐</button></form>
