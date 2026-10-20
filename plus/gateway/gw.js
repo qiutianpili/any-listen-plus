@@ -2,6 +2,7 @@
 'use strict';
 const http = require('http'), net = require('net'), fs = require('fs'), path = require('path'),
   crypto = require('crypto'), { execFile } = require('child_process');
+const DL = require('./dl.js');
 const DIR = '/opt/al-gateway', USERS = DIR + '/users.json', SECRET_F = DIR + '/secret',
   UROOT = '/opt/al-users', ADMIN_DATA = '/opt/any-listen/data', PORT = 9400, MAX_USERS = 4;
 if (!fs.existsSync(SECRET_F)) fs.writeFileSync(SECRET_F, crypto.randomBytes(32).toString('hex'), { mode: 0o600 });
@@ -288,6 +289,11 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/__gw/notice') return send(res, 200, JSON.stringify(notice ? { title: notice.title, text: notice.text, ts: notice.ts } : null), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     if (url.pathname === '/__gw/push') return send(res, 200, JSON.stringify({ u: me.name, list: pushFor(me, +url.searchParams.get('a') || 0) }), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     if (url.pathname === '/__gw/me') return send(res, 200, JSON.stringify({ name: dn(me), role: me.role, k: me.alpw || '' }), { 'Content-Type': 'application/json' });
+    // song download (2026-10-20, dl.js): admin only for now
+    if (url.pathname === '/__gw/dl' || url.pathname.startsWith('/__gw/dl/')) {
+      if (me.role !== 'admin') return send(res, 403, '仅管理员可用', { 'Content-Type': 'text/plain; charset=utf-8' });
+      return DL.handle(req, res, url, me, send);
+    }
     if (url.pathname.startsWith('/__gw/admin')) {
       if (me.role !== 'admin') return send(res, 403, page('无权限', '<h1>仅管理员可用</h1><p><a href="/">返回</a></p>'));
       if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'POST') return send(res, 405, 'method', { 'Content-Type': 'text/plain' });
