@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 # 每日推荐 (2026-10-12): per user, 30 songs from QQ Music "similar songs" seeded by play history + own lists.
 # Skips users not seen for 7 days. Writes /opt/al-gateway/daily/<name>.json {date, ts, list:[Any Listen music items]}.
+# Generation (2026-10-20): with AL_LLM_API_KEY set, candidates are proposed by an LLM (OpenAI-compatible chat API;
+# AL_LLM_BASE_URL / AL_LLM_MODEL, default DeepSeek "deepseek-flash") from the user's taste profile, then resolved to
+# real QQ tracks via search. The similar-songs path below only tops up when the LLM yields < AL_LLM_MIN (25) usable
+# songs, and is the full fallback when the LLM is off or fails.
+# Optional (2026-10-20): with AL_CLEF_ACCOUNT_ID + AL_CLEF_API_TOKEN set, top heuristic candidates are also scored by
+# Clef-flash (Workers AI) against the user's taste profile and blended in (AL_CLEF_WEIGHT, default 2); any failure
+# silently falls back to the plain heuristic ranking, so recommendations are produced either way.
 # usage: daily.py            -> all users
 #        daily.py --user X --active -> one user who is online now (gateway calls this when there is no list for today yet)
 import json, os, random, re, sqlite3, sys, time, unicodedata, urllib.request, datetime
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
 DIR = '/opt/al-gateway'; OUT = DIR + '/daily'; SEEN = DIR + '/seen.json'
@@ -18,6 +26,15 @@ def log(*a): sys.stderr.write(' '.join(str(x) for x in a) + '\n')
 # on-demand runs (--active, started by the gateway while the user waits) get fewer/shorter retries and a hard
 # overall budget so the gateway's 180 s kill never lands mid-run (2026-10-19)
 ACTIVE = '--active' in sys.argv; DEADLINE = time.time() + (120 if ACTIVE else 10 ** 9)
+
+def _env_num(name, default, cast):
+    try: return cast(os.environ.get(name, ''))
+    except Exception: return default
+
+CLEF_TOPK = max(1, min(64, _env_num('AL_CLEF_TOPK', 48, int)))  # Workers AI caps a request at 64 questions
+CLEF_W = _env_num('AL_CLEF_WEIGHT', 2.0, float)
+CLEF_TIMEOUT = _env_num('AL_CLEF_TIMEOUT', 20, int)
+LLM_MIN = _env_num('AL_LLM_MIN', 25, int)  # usable LLM songs needed before the similar-songs path is skipped entirely
 def qq(module, method, param):
     if time.time() > DEADLINE: return None
     body = json.dumps({'comm': {'ct': 24, 'cv': 0}, 'req': {'module': module, 'method': method, 'param': param}}).encode()
@@ -57,14 +74,19 @@ def playable(t):
     f = t.get('file') or {}
     return f.get('media_mid') and (f.get('size_128mp3') or f.get('size_320mp3')) and not BAD.search((t.get('title') or '') + ' ' + (t.get('subtitle') or ''))
 
-def tx_songid(name, singer):
+def tx_lookup(name, singer):
+    # first QQ search hit whose title matches exactly and whose singers overlap; the entry doubles as a track dict
     d = qq('music.search.SearchCgiService', 'DoSearchForQQMusicDesktop', {'grp': 1, 'num_per_page': 8, 'page_num': 1, 'query': '%s %s' % (singer, name), 'search_type': 0})
     if not d: return None
     want = {norm(x) for x in re.split(r'[、&/,，]', singer) if norm(x)}
     for s in (((d.get('body') or {}).get('song') or {}).get('list') or []):
         if norm(s.get('title') or s.get('name')) == norm(name) and want & {norm(a['name']) for a in s.get('singer') or []}:
-            return s.get('id')
+            return s
     return None
+
+def tx_songid(name, singer):
+    s = tx_lookup(name, singer)
+    return s.get('id') if s else None
 
 def db_path(name, role):
     return (ADMIN_DATA if role == 'admin' else os.path.join(UROOT, name, 'data')) + '/app/anylisten.data.db'
@@ -99,18 +121,96 @@ def _read_lists(path):
     daily = [lid for lid, (n, t) in lists.items() if n == '每日推荐']
     return by, daily
 
-def make(u, rnd):
-    path = db_path(u['name'], u.get('role'))
-    if not os.path.exists(path): return None
-    by, daily = read_lists(path)
-    hist = by.get('last_played', [])[:60]
-    others = [m for lid, ms in by.items() if lid not in ('last_played', 'default') and lid not in daily for m in ms]
-    if not hist and not others: return []
-    owned_ids = {m['id'] for lid, ms in by.items() if lid not in daily for m in ms}
-    owned_key = {norm(m['name']) + '|' + norm((m['singer'] or '').split('、')[0]) for lid, ms in by.items() if lid not in daily for m in ms}
-    # yesterday's picks are avoided too, so the list changes every day
-    try: prev = {m['id'] for m in json.load(open(os.path.join(OUT, u['name'] + '.json')))['list']}
-    except Exception: prev = set()
+def taste_state(hist, others):
+    recent = ['%s - %s' % (m['name'], m['singer']) for m in hist[:25] if m.get('name')]
+    top = [a for a, _ in Counter((m['singer'] or '').split('、')[0] for m in others if m.get('singer')).most_common(15) if a]
+    parts = ['Listening profile of a music app user. Judge each candidate song by artist, style and mood similarity to this profile.']
+    if recent: parts.append('Recently played: ' + '; '.join(recent))
+    if top: parts.append("Artists in the user's own playlists: " + ', '.join(top))
+    return '\n'.join(parts)
+
+def clef_scores(u, hist, others, items):
+    # Clef-flash (Workers AI) P(user enjoys this song) per candidate item; {} on any problem -> caller keeps heuristic order
+    acct, tok = os.environ.get('AL_CLEF_ACCOUNT_ID'), os.environ.get('AL_CLEF_API_TOKEN')
+    if not acct or not tok or not items or time.time() > DEADLINE: return {}
+    qs = {}
+    for i, it in enumerate(items):
+        qs['q%d' % i] = {'type': 'noul', 'instructions': "Would this user enjoy the song '%s' by %s (album: %s)?" % (it['name'], it['singer'], it['meta'].get('albumName') or 'unknown')}
+    body = json.dumps({'model': 'clef-flash', 'state': taste_state(hist, others), 'questions': qs}).encode()
+    req = urllib.request.Request('https://api.cloudflare.com/client/v4/accounts/%s/ai/run/@cf/cloudflare/clef-flash' % acct, body,
+                                 {'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=min(CLEF_TIMEOUT, max(1, int(DEADLINE - time.time())))) as r: d = json.loads(r.read())
+    except Exception as e:
+        log('clef err', u['name'], e); return {}
+    if not d.get('success'):
+        log('clef err', u['name'], d.get('errors')); return {}
+    ans = (d.get('result') or {}).get('answers') or {}
+    out = {}
+    for i, it in enumerate(items):
+        v = (ans.get('q%d' % i) or {}).get('noul')
+        if isinstance(v, (int, float)) and 0 <= v <= 1: out[it['id']] = float(v)
+    log('clef scored', u['name'], len(out), 'of', len(items))
+    return out
+
+ANGLES = ['late-night solitude', 'commuting', 'working out', 'deep focus', 'nostalgia', 'light and upbeat', 'rainy day', 'before sleep']
+
+def llm_picks(u, hist, others, exclude, n):
+    # one OpenAI-compatible chat call -> [{'name','singer'}]; [] on any problem (bad JSON included)
+    key = os.environ.get('AL_LLM_API_KEY')
+    if not key: return []
+    url = os.environ.get('AL_LLM_BASE_URL', 'https://api.deepseek.com').rstrip('/') + '/chat/completions'
+    prompt = (taste_state(hist, others) + '\n\nRecommend %d songs this user is likely to enjoy, with a "%s" mood angle. '
+              'Rules: real, existing songs only; do not repeat any song named in the profile above or here: %s; '
+              'at most 3 songs per artist; about 70%% close to the profile taste and 30%% adjacent discoveries in similar styles; '
+              'original versions only (no covers, remixes, instrumentals, karaoke or sped-up versions). '
+              'Reply with JSON only: {"songs": [{"name": "...", "singer": "..."}]}'
+              % (n, random.choice(ANGLES), '; '.join(exclude[:80]) or 'none'))
+    body = json.dumps({'model': os.environ.get('AL_LLM_MODEL', 'deepseek-flash'), 'temperature': 0.7,
+                       'response_format': {'type': 'json_object'},
+                       'messages': [{'role': 'system', 'content': 'You are a music recommendation engine. Output valid JSON only.'},
+                                    {'role': 'user', 'content': prompt}]}).encode()
+    req = urllib.request.Request(url, body, {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})
+    for i in range(2):
+        if time.time() > DEADLINE: return []
+        try:
+            with urllib.request.urlopen(req, timeout=min(_env_num('AL_LLM_TIMEOUT', 45, int), max(1, int(DEADLINE - time.time())))) as r: d = json.loads(r.read())
+            txt = d['choices'][0]['message']['content']
+            songs = json.loads(txt[txt.find('{'):txt.rfind('}') + 1]).get('songs') or []
+            out = [{'name': str(s['name']), 'singer': str(s['singer'])} for s in songs if isinstance(s, dict) and s.get('name') and s.get('singer')]
+            log('llm picks', u['name'], len(out))
+            return out
+        except Exception as e:
+            log('llm err', u['name'], e)
+    return []
+
+def llm_cand(u, hist, others, owned_ids, owned_key):
+    # LLM picks resolved to real tracks via QQ search; heuristic score = LLM rank (top pick 3.0 -> last ~0)
+    cand, order, tried = {}, [], set()
+    base_exclude = [m['name'] for m in hist[:25]] + [m['name'] for m in others[:60]]
+    for rnd_i in range(2):
+        picks = llm_picks(u, hist, others, base_exclude + [cand[x][1]['name'] for x in order], 50 if rnd_i == 0 else 30)
+        fresh = []
+        for p in picks:
+            k = norm(p['name']) + '|' + norm(p['singer'])
+            if k in tried: continue
+            tried.add(k); fresh.append(p)
+        if not fresh: break
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            tracks = list(ex.map(lambda p: tx_lookup(p['name'], p['singer']), fresh))
+        for t in tracks:
+            if not t or not t.get('mid') or not playable(t) or len(t.get('singer') or []) > 5: continue
+            it = item(t); key = norm(it['name']) + '|' + norm(it['singer'].split('、')[0])
+            if it['id'] in owned_ids or key in owned_key or it['id'] in cand: continue
+            cand[it['id']] = [0, it, key]; order.append(it['id'])
+        log('llm resolved', u['name'], len(order))
+        if len(order) >= LLM_MIN: break
+    total = len(order)
+    for rank, x in enumerate(order): cand[x][0] = (total - rank) / total * 3 if total else 0
+    return cand, order
+
+def _similar_cand(u, rnd, hist, others, owned_ids, owned_key):
+    # original candidate source: QQ "similar songs" per seed taken from play history + own lists
     seeds = rnd.sample(hist[:20], min(6, len(hist[:20]))) + rnd.sample(hist[20:], min(2, len(hist[20:])))
     pool = [m for m in others if m['id'] not in {s['id'] for s in seeds}]
     seeds += rnd.sample(pool, min(12 - len(seeds), len(pool)))
@@ -150,7 +250,36 @@ def make(u, rnd):
             if it['id'] in owned_ids or key in owned_key: continue
             if it['id'] not in cand: cand[it['id']] = [0, it, key]; order.append(it['id'])
             cand[it['id']][0] += 1 + (0.5 if i < 8 else 0)
-    ranked = sorted(order, key=lambda x: (-(cand[x][0] - (1.5 if x in prev else 0)) - rnd.random() * 0.9))
+    return cand, order
+
+def make(u, rnd):
+    path = db_path(u['name'], u.get('role'))
+    if not os.path.exists(path): return None
+    by, daily = read_lists(path)
+    hist = by.get('last_played', [])[:60]
+    others = [m for lid, ms in by.items() if lid not in ('last_played', 'default') and lid not in daily for m in ms]
+    if not hist and not others: return []
+    owned_ids = {m['id'] for lid, ms in by.items() if lid not in daily for m in ms}
+    owned_key = {norm(m['name']) + '|' + norm((m['singer'] or '').split('、')[0]) for lid, ms in by.items() if lid not in daily for m in ms}
+    # yesterday's picks are avoided too, so the list changes every day
+    try: prev = {m['id'] for m in json.load(open(os.path.join(OUT, u['name'] + '.json')))['list']}
+    except Exception: prev = set()
+    cand, order = {}, []
+    if os.environ.get('AL_LLM_API_KEY'):
+        cand, order = llm_cand(u, hist, others, owned_ids, owned_key)
+    if len(order) < LLM_MIN:
+        sc, so = _similar_cand(u, rnd, hist, others, owned_ids, owned_key)
+        if not order:
+            cand, order = sc, so
+        elif so:
+            # LLM picks stay primary: similar-songs candidates join at half their heuristic score
+            for x in so:
+                if x not in cand: cand[x] = [sc[x][0] * 0.5, sc[x][1], sc[x][2]]; order.append(x)
+            log('llm top-up from similar', u['name'], len(order))
+    heur = {x: cand[x][0] - (1.5 if x in prev else 0) for x in order}
+    top = sorted(order, key=lambda x: -heur[x])[:CLEF_TOPK]
+    probs = clef_scores(u, hist, others, [cand[x][1] for x in top])
+    ranked = sorted(order, key=lambda x: -(heur[x] + CLEF_W * probs.get(x, 0)) - rnd.random() * 0.9)
     out, per, keys = [], {}, set()
     for x in ranked:
         sc, it, key = cand[x]; a = norm(it['singer'].split('、')[0])
