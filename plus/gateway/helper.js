@@ -4,7 +4,7 @@
 'use strict';
 const fs = require('fs'), path = require('path'), { execFileSync, spawnSync } = require('child_process');
 const UROOT = '/opt/al-users', ADMIN_DATA = '/opt/any-listen/data', ACC_INSTALL = '/opt/al-accsrc/bin/install.py',
-  DAILY = '/opt/al-gateway-root/daily.py', SAFE_ID = /^[A-Za-z0-9_]{1,24}$/;
+  DAILY = '/opt/al-gateway-root/daily.py', LLM_ENV = '/etc/al-daily.env', SAFE_ID = /^[A-Za-z0-9_]{1,24}$/;
 const SKIP_CFG = /^player\.|^list\.|^playDetail|^common\.lastPlay/;
 const die = (m, c = 2) => { process.stderr.write(m + '\n'); process.exit(c); };
 const run = (cmd, args, o = {}) => execFileSync(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000, ...o }).toString();
@@ -53,6 +53,23 @@ function dailyIds(id) {
   try { return db.prepare("SELECT id FROM my_list l WHERE name = '每日推荐' AND type = 'general' ORDER BY (SELECT COUNT(*) FROM my_list_music_info m WHERE m.list_id = l.id) DESC, json_extract(meta, '$.createTime')").all().map(r => r.id); }
   finally { db.close(); }
 }
+// 每日推荐 LLM keys (2026-10-20): admin page -> setllm (JSON on stdin) -> /etc/al-daily.env (root 600). llmstat only
+// ever returns the last 4 characters.
+function readEnv() { const o = {}; try { for (const ln of fs.readFileSync(LLM_ENV, 'utf8').split('\n')) { const m = ln.match(/^(AL_[A-Z_]+)=(.*)$/); if (m) o[m[1]] = m[2]; } } catch (e) {} return o; }
+function setLlm() {
+  let j; try { j = JSON.parse(fs.readFileSync(0, 'utf8')); } catch (e) { die('bad json'); }
+  const o = readEnv(), ok = (v, re) => typeof v === 'string' && re.test(v);
+  const KEYS = { AL_LLM_API_KEY: /^[A-Za-z0-9_\-.]{16,200}$/, AL_CLEF_ACCOUNT_ID: /^[0-9a-f]{32}$/, AL_CLEF_API_TOKEN: /^[A-Za-z0-9_\-]{20,200}$/ };
+  for (const k of Object.keys(KEYS)) {
+    if (j.clear && j.clear.includes(k)) { delete o[k]; continue; }
+    if (j[k] == null || j[k] === '') continue;
+    if (!ok(j[k], KEYS[k])) die('bad ' + k);
+    o[k] = j[k];
+  }
+  const tmp = LLM_ENV + '.tmp';
+  fs.writeFileSync(tmp, Object.entries(o).map(([k, v]) => k + '=' + v).join('\n') + '\n', { mode: 0o600 });
+  fs.chmodSync(tmp, 0o600); fs.renameSync(tmp, LLM_ENV);
+}
 const [verb, id, arg] = process.argv.slice(2);
 if (!SAFE_ID.test(id || '')) die('bad id');
 try {
@@ -65,10 +82,13 @@ try {
     }
     case 'remove': if (id === 'admin') die('bad id'); remove(id); break;
     case 'daily': {
-      const r = spawnSync('python3', [DAILY, '--user', id].concat(arg === 'active' ? ['--active'] : []), { stdio: 'inherit', timeout: 175000 });
+      const r = spawnSync('python3', [DAILY, '--user', id].concat(arg === 'active' ? ['--active'] : arg === 'force' ? ['--force'] : []), { stdio: 'inherit', timeout: 175000 });
       process.exit(r.status == null ? 1 : r.status);
     }
     case 'dailyids': process.stdout.write(JSON.stringify(dailyIds(id))); break;
+    case 'setllm': if (id !== 'admin') die('bad id'); setLlm(); break;
+    case 'llmstat': { if (id !== 'admin') die('bad id'); const o = readEnv(), l4 = v => v ? v.slice(-4) : null;
+      process.stdout.write(JSON.stringify({ llm: l4(o.AL_LLM_API_KEY), clef: !!(o.AL_CLEF_ACCOUNT_ID && o.AL_CLEF_API_TOKEN), clefAcct: o.AL_CLEF_ACCOUNT_ID ? o.AL_CLEF_ACCOUNT_ID.slice(-4) : null })); break; }
     default: die('bad verb');
   }
 } catch (e) { die(String(e.stderr || e.message).trim(), 1); }
