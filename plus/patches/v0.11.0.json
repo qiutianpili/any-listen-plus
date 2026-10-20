@@ -209,5 +209,33 @@
     "replace": "al: options.signal,\n\t\tdispatcher: options.safe ? __alSafeDisp(options) : buildRequestDispatcher(options)\n\t}).then(async (resp"
    }
   ]
+ },
+ "AppSetting-VUO4Lkte.js": {
+  "sha256_original": "6a6d47da963cac81d05166b9a61f46382b56ccb1783cae97662ac3eef10221d5",
+  "sha256_patched": "0440542f536ab29563edfc1f4a6a814e609de4a156700167e75c977edef5eb85",
+  "hunks": [
+   {
+    "find": "mport.meta.url)}]},{id:`update`,name:`settings.update`,list:[{field:`common.tryAut",
+    "replace": "mport.meta.url)}]},{id:`update`,name:`settings.update`,list:/*al-app-upd*/((a)=>window.AndroidBridge&&window.AndroidBridge.appInfo?[{name:`al_app_ver`,type:`component`,component:a[3].component},{name:`al_app_log`,type:`component`,component:async()=>({default:(await a[3].component()).alLog})}]:a)([{field:`common.tryAut"
+   },
+   {
+    "find": "]),import.meta.url)}]},{id:`about`,name:`s",
+    "replace": "]),import.meta.url)}])},{id:`about`,name:`s"
+   }
+  ]
+ },
+ "Update-Cz58KBQF.js": {
+  "sha256_original": "f916b5d915d5026713fbedf281b029fb9e2e99030ad6bc994003adfba0f3c337",
+  "sha256_patched": "808d0944cd143b9c2a1bf3d1fd3f2e0b2b86fc1ce519f125b7c4bc9c2ddc1d2e",
+  "hunks": [
+   {
+    "find": "iv> <!> <!></div>`);function N(t,h){m(h,!0);let N=()=>a(",
+    "replace": "iv> <!> <!></div>`);var ALH=t(`<div class=\"al-app-upd-host\" style=\"display:contents\"></div>`);function ALM(k){return function(a){var H=ALH();y(a,H);try{window.__alAppUpdMount&&window.__alAppUpdMount(k,H)}catch(e){}}}var ALL=ALM(`log`),ALV=ALM(`ver`);/*al-app-upd*/function N(t,h){if(window.AndroidBridge&&window.AndroidBridge.appInfo)return ALV(t);m(h,!0);let N=()=>a("
+   },
+   {
+    "find": "h([`click`]);export{N as default};\n//# sourceMappingU",
+    "replace": "h([`click`]);export{N as default,ALL as alLog};\n//# sourceMappingU"
+   }
+  ]
  }
 }
