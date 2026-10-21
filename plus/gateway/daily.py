@@ -10,7 +10,7 @@
 # silently falls back to the plain heuristic ranking, so recommendations are produced either way.
 # usage: daily.py            -> all users
 #        daily.py --user X --active -> one user who is online now (gateway calls this when there is no list for today yet)
-import json, os, random, re, sqlite3, sys, time, unicodedata, urllib.request, datetime
+import grp, json, os, random, re, sqlite3, sys, time, unicodedata, urllib.parse, urllib.request, datetime
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
@@ -89,12 +89,26 @@ def playable(t):
     f = t.get('file') or {}
     return f.get('media_mid') and (f.get('size_128mp3') or f.get('size_320mp3')) and not BAD.search((t.get('title') or '') + ' ' + (t.get('subtitle') or ''))
 
+def soso(query):
+    # 2026-10-21: musicu DoSearchForQQMusicDesktop now answers code 0 with an empty song list from this server,
+    # so every LLM pick resolved to nothing; the classic client_search_cp endpoint (new_json) returns the same track dicts
+    if time.time() > DEADLINE: return []
+    u = 'https://c.y.qq.com/soso/fcgi-bin/client_search_cp?' + urllib.parse.urlencode({'w': query, 'format': 'json', 'p': 1, 'n': 8, 'cr': 1, 'new_json': 1})
+    for i in range(2):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(u, headers={'User-Agent': 'Mozilla/5.0', 'Referer': 'https://y.qq.com/'}), timeout=8) as r:
+                return ((json.loads(r.read()).get('data') or {}).get('song') or {}).get('list') or []
+        except Exception as e:
+            log('soso err', e); time.sleep(1)
+    return []
+
 def tx_lookup(name, singer):
     # first QQ search hit whose title matches exactly and whose singers overlap; the entry doubles as a track dict
-    d = qq('music.search.SearchCgiService', 'DoSearchForQQMusicDesktop', {'grp': 1, 'num_per_page': 8, 'page_num': 1, 'query': '%s %s' % (singer, name), 'search_type': 0})
-    if not d: return None
+    q = '%s %s' % (singer, name)
+    d = qq('music.search.SearchCgiService', 'DoSearchForQQMusicDesktop', {'grp': 1, 'num_per_page': 8, 'page_num': 1, 'query': q, 'search_type': 0})
+    lst = (((d or {}).get('body') or {}).get('song') or {}).get('list') or soso(q)
     want = {norm(x) for x in re.split(r'[、&/,，]', singer) if norm(x)}
-    for s in (((d.get('body') or {}).get('song') or {}).get('list') or []):
+    for s in lst:
         if norm(s.get('title') or s.get('name')) == norm(name) and want & {norm(a['name']) for a in s.get('singer') or []}:
             return s
     return None
@@ -327,7 +341,11 @@ def run(users, force=False, active=False):
             log('empty', u['name']); continue
         tmp = f + '.tmp'
         json.dump({'date': today, 'ts': int(time.time() * 1000), 'list': lst}, open(tmp, 'w'), ensure_ascii=False)
-        os.chmod(tmp, 0o640); os.replace(tmp, f)
+        os.chmod(tmp, 0o640)
+        # the gateway runs as al-gw (since 10-19) and must be able to read the list
+        try: os.chown(tmp, 0, grp.getgrnam('al-gw').gr_gid)
+        except Exception as e: log('chown', e)
+        os.replace(tmp, f)
         log('ok', u['name'], len(lst))
 
 if __name__ == '__main__':
