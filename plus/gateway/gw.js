@@ -103,8 +103,9 @@ async function sessionUser(req) {
   const [h, p, sg] = t.split('.'); if (!sg) return null;
   let hd, pl; try { hd = b64j(h); pl = b64j(p); } catch (e) { return null; }
   if (hd.alg !== 'RS256') return null;
-  if (!jwks[hd.kid] && Date.now() - jwksAt > 60e3) await loadCerts();
-  const key = jwks[hd.kid]; if (!key) return null;
+  const kid = String(hd.kid || ''); // own keys only: a crafted kid like 'constructor' must not reach crypto.verify
+  if (!Object.hasOwn(jwks, kid) && Date.now() - jwksAt > 60e3) await loadCerts();
+  const key = Object.hasOwn(jwks, kid) ? jwks[kid] : null; if (!key) return null;
   if (!crypto.verify('RSA-SHA256', Buffer.from(h + '.' + p), key, Buffer.from(sg, 'base64url'))) return null;
   const now = Date.now() / 1000;
   if (pl.iss !== CF_TEAM || !(Array.isArray(pl.aud) ? pl.aud : [pl.aud]).includes(CF_AUD) || !(pl.exp > now) || (pl.nbf && pl.nbf > now + 60)) return null;
